@@ -4,8 +4,10 @@ export const config = {
   maxDuration: 300,
 }
 
-function getExpectedToken() {
-  return (process.env.MONITOR_CRON_TOKEN || process.env.CRON_SECRET || '').trim()
+function getAllowedTokens() {
+  return [process.env.MONITOR_CRON_TOKEN, process.env.CRON_SECRET]
+    .map((t) => t?.trim())
+    .filter(Boolean)
 }
 
 function headerValue(headers, name) {
@@ -32,13 +34,13 @@ function extractToken(req) {
 }
 
 function verifyAuth(req) {
-  const expected = getExpectedToken()
-  if (!expected) {
+  const allowed = getAllowedTokens()
+  if (allowed.length === 0) {
     return { ok: false, status: 503, message: 'MONITOR_CRON_TOKEN is not configured' }
   }
 
   const provided = extractToken(req)
-  if (!provided || provided !== expected) {
+  if (!provided || !allowed.includes(provided)) {
     return { ok: false, status: 401, message: 'Unauthorized' }
   }
 
