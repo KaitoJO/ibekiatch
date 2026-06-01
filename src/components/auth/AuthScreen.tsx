@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { getEmailRedirectTo, isEmailNotConfirmedError } from '../../lib/authConfig'
+import { getEmailRedirectTo, emailSendFailureMessage, isEmailNotConfirmedError, isEmailSendFailureError } from '../../lib/authConfig'
+import { APP_DESCRIPTION, APP_NAME } from '../../lib/brand'
 import { formatError } from '../../lib/formatError'
 import { ConfirmEmailPanel } from './ConfirmEmailPanel'
 import './auth.css'
@@ -54,7 +55,12 @@ export function AuthScreen({ supabase }: Props) {
             emailRedirectTo: getEmailRedirectTo(),
           },
         })
-        if (error) throw error
+        if (error) {
+          if (isEmailSendFailureError(error.message)) {
+            throw new Error(emailSendFailureMessage())
+          }
+          throw error
+        }
 
         if (data.session) {
           return
@@ -99,7 +105,12 @@ export function AuthScreen({ supabase }: Props) {
           emailRedirectTo: getEmailRedirectTo(),
         },
       })
-      if (error) throw error
+      if (error) {
+        if (isEmailSendFailureError(error.message)) {
+          throw new Error(emailSendFailureMessage())
+        }
+        throw error
+      }
       startResendCooldown()
       setMessage({ type: 'ok', text: '確認メールを再送しました。' })
     } catch (err) {
@@ -123,8 +134,8 @@ export function AuthScreen({ supabase }: Props) {
           <div className="auth-screen__logo" aria-hidden>
             🚚
           </div>
-          <h1 className="auth-screen__title">ibekiatch</h1>
-          <p className="auth-screen__subtitle">キッチンカーアカウントでログイン</p>
+          <h1 className="auth-screen__title">{APP_NAME}</h1>
+          <p className="auth-screen__subtitle">{APP_DESCRIPTION}</p>
         </div>
 
         {view === 'confirm' ? (

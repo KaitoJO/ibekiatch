@@ -1,66 +1,67 @@
 # 確認メール（SMTP）セットアップ
 
 ibekiatch では **新規登録時にメール確認** を必須にしています。  
-Supabase 標準メールは届きにくいため、**Resend** などの SMTP を設定することを推奨します。
+Supabase 標準メールは届きにくいため、**Resend** の SMTP を使います。
 
-## 1. Resend で API キーを取得（無料枠あり）
+## クイックセットアップ（CLI 推奨）
 
-1. [Resend](https://resend.com/) に登録
-2. **API Keys** からキーを作成
-3. （任意）ドメインを verify すると `noreply@yourdomain.com` から送信可能  
-   未設定の場合は Resend のテスト用送信元を利用
+```bash
+# 1. Resend で API キーを取得 → .env に追加
+#    RESEND_API_KEY=re_...
+#    RESEND_SENDER_EMAIL=onboarding@resend.dev  # テスト用
 
-## 2. Supabase に SMTP を設定
+# 2. Supabase に SMTP を反映
+npm run auth:smtp
+```
 
-1. [Supabase Dashboard](https://supabase.com/dashboard) → プロジェクト **emrvzqwqccakhifdmviu**
-2. **Project Settings → Authentication → SMTP Settings**
-3. **Enable Custom SMTP** を ON
-4. 例（Resend）:
+`supabase/config.toml` の SMTP 設定と確認メールテンプレートがリモートに push されます。
 
-   | 項目 | 値 |
-   |------|-----|
-   | Host | `smtp.resend.com` |
-   | Port | `465` |
-   | Username | `resend` |
-   | Password | Resend の API キー |
-   | Sender email | `onboarding@resend.dev`（テスト）または自ドメイン |
-   | Sender name | `ibekiatch` |
+## 1. Resend で API キーを取得
 
-5. **Save**
+1. [Resend](https://resend.com/signup) に登録（GitHub 連携可）
+2. [API Keys](https://resend.com/api-keys) からキーを作成（`re_` で始まる）
+3. `.env` に設定:
 
-## 3. URL 設定（必須）
+   ```env
+   RESEND_API_KEY=re_xxxxxxxx
+   RESEND_SENDER_EMAIL=onboarding@resend.dev
+   ```
 
-**Authentication → URL Configuration**
+### 送信元について
+
+| モード | 送信元 | 届く宛先 |
+|--------|--------|----------|
+| テスト | `onboarding@resend.dev` | **Resend 登録メールアドレスのみ** |
+| 本番 | `noreply@yourdomain.com` | 任意のユーザー（ドメイン verify 後） |
+
+本番で全ユーザーに届けるには [Resend Domains](https://resend.com/domains) でドメインを verify し、`RESEND_SENDER_EMAIL` を変更してください。
+
+## 2. 手動設定（Dashboard）
+
+CLI を使わない場合:
+
+1. [Supabase Dashboard](https://supabase.com/dashboard/project/emrvzqwqccakhifdmviu/settings/auth) → **SMTP Settings**
+2. **Enable Custom SMTP** を ON
+3. Host `smtp.resend.com` / Port `465` / User `resend` / Password = API キー
+
+## 3. URL 設定（反映済み）
 
 - **Site URL**: `https://ibekiatch.vercel.app`
-- **Redirect URLs**:
-  - `https://ibekiatch.vercel.app/**`
-  - `http://localhost:5173/**`
+- **Redirect URLs**: `https://ibekiatch.vercel.app/**`, `http://localhost:5173/**`
 
-## 4. メールテンプレート（任意）
-
-**Authentication → Email Templates → Confirm signup**
-
-件名例: `ibekiatch アカウント確認`
-
-## 5. 動作確認
+## 4. 動作確認
 
 1. https://ibekiatch.vercel.app で新規登録
 2. 確認メール画面が表示される
 3. メール内リンクをタップ → アプリに戻り自動ログイン
 
+Resend の [Logs](https://resend.com/emails) で送信状況を確認できます。
+
 ## トラブルシューティング
 
 | 現象 | 対処 |
 |------|------|
-| メールが届かない | SMTP 設定・迷惑メール・Resend の送信ログを確認 |
+| メールが届かない | `npm run auth:smtp` 実行済みか、Resend Logs を確認 |
+| テストで他アドレスに届かない | `onboarding@resend.dev` は登録メアドレス宛のみ。ドメイン verify が必要 |
 | リンクを開いてもログインできない | Redirect URLs に本番 URL が入っているか確認 |
-| 「Email not confirmed」 | 確認メールを再送、または Dashboard でユーザーを手動 confirm |
-
-## CLI で確認メールを有効化済み
-
-```bash
-npx supabase config push --yes
-```
-
-`supabase/config.toml` の `[auth.email] enable_confirmations = true` がリモートに反映されます。
+| 「Email not confirmed」 | 確認メールを再送、または Dashboard で手動 confirm |

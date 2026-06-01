@@ -1,28 +1,39 @@
-# ibekiatch
+# イベキャッチ（ibekiatch）
 
-キッチンカー向け出店マッチングのスマホファースト Web アプリ（Vite + React + TypeScript + Supabase）。
+キッチンカー・移動販売・露天営業者向けに、出店場所の募集情報を **AIが自動収集して通知する** Webアプリ。
+
+- **Production**: https://ibekiatch.vercel.app
+- **展開**: 三重県から全国（推定ターゲット 2〜3万台）
+
+## ビジネスモデル
+
+### サービス概要
+
+出店場所の募集情報を9ソースから1時間ごとに自動収集し、出店者に届ける。
+
+### 収益3本柱
+
+1. **ユーザーサブスク** — スタンダード ¥1,200/月 · プレミアム ¥2,980/月
+2. **主催者掲載課金** — イベント主催者からの出店者募集掲載費
+3. **スポンサー広告** — 包材屋・POSレジ・キッチンカー制作・保険など
+
+### 監視ソース（9）
+
+こくちーず · Peatix · Googleニュース · ジモティー · 市町村HP · 商工会HP · 道の駅HP · イベントバンク · まいぷれ三重
+
+→ [cron-job.org](https://cron-job.org) から `/api/cron/monitor` を1時間ごとに実行（[セットアップ](docs/MONITOR_SETUP.md)）
+
+### コミュニティ
+
+出店済みイベントへのレビュー・評価・情報共有・ユーザー同士の繋がり
 
 ## 機能
 
-- 下部タブバー：ホーム / カレンダー / 通知 / コミュニティ / マイページ
-- **認証**：メール＋パスワード（Supabase Auth）
-- **ホーム**：出店募集のカード表示・エリア/ジャンル/キーワードフィルター・詳細画面・応募
-- **カレンダー**：応募済み出店予定を月表示
-- **通知**：応募・システム・コミュニティ通知（既読管理）
-- **コミュニティ**：投稿・レビュー（★評価）
-- **マイページ**：プロフィール編集・応募履歴・ログアウト
-- オレンジ系のアプリライク UI
-
-## Supabase セットアップ
-
-1. `.env.example` を `.env` にコピーし、次を設定:
-   - `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`
-   - `SUPABASE_ACCESS_TOKEN` / `SUPABASE_DB_PASSWORD`（CLI 用）
-
-2. `npm run db:push` でマイグレーション適用
-
-3. **確認メール（SMTP）**: [docs/AUTH_EMAIL_SETUP.md](docs/AUTH_EMAIL_SETUP.md) を参照  
-   新規登録時はメール確認必須です。Resend 等の SMTP 設定を推奨します。
+- **ホーム**: AI収集の新着 + 主催者掲載の募集
+- **カレンダー**: 応募済み出店予定
+- **通知**: 応募・システム・コミュニティ
+- **コミュニティ**: 投稿・★レビュー
+- **マイページ**: プラン · プロフィール · 応募履歴
 
 ## 開発
 
@@ -31,27 +42,23 @@ npm install
 npm run dev
 ```
 
-ブラウザで `http://localhost:5173` を開き、DevTools のモバイル表示（幅 390px 前後）で確認するのがおすすめです。
+## 本番デプロイ
 
-## 本番（Vercel）
+Vercel 環境変数:
 
-- **Production URL**: https://ibekiatch.vercel.app
-- **GitHub**: https://github.com/KaitoJO/ibekiatch
-- **Vercel ダッシュボード**: https://vercel.com/kaitos-projects-f6bfe401/ibekiatch
-
-環境変数（Vercel → Settings → Environment Variables）:
-
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_ANON_KEY`
-
-Supabase **Authentication → URL Configuration** に本番 URL を追加:
-
-- Site URL: `https://ibekiatch.vercel.app`
-- Redirect URLs: `https://ibekiatch.vercel.app/**`
-
-再デプロイ:
+| 変数 | 用途 |
+|------|------|
+| `VITE_SUPABASE_URL` | フロント / API |
+| `VITE_SUPABASE_ANON_KEY` | フロント |
+| `SUPABASE_SERVICE_ROLE_KEY` | 監視ジョブ DB 書き込み |
+| `MONITOR_CRON_TOKEN` | cron-job.org 認証 |
 
 ```bash
+npm run build
 npx vercel deploy --prod
 ```
 
+## 関連ドキュメント
+
+- [監視ジョブ設定](docs/MONITOR_SETUP.md)
+- [確認メール設定](docs/AUTH_EMAIL_SETUP.md)

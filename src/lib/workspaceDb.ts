@@ -6,6 +6,7 @@ import type {
   CommunityPostForm,
   CommunityReview,
   CommunityReviewForm,
+  MonitorHit,
   NotificationRecord,
   Profile,
   ProfileForm,
@@ -85,13 +86,14 @@ export type WorkspaceData = {
   notifications: NotificationRecord[]
   communityPosts: CommunityPost[]
   communityReviews: CommunityReview[]
+  monitorHits: MonitorHit[]
 }
 
 export async function fetchWorkspace(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<WorkspaceData> {
-  const [recruitmentsRes, applicationsRes, profileRes, notificationsRes, postsRes, reviewsRes] =
+  const [recruitmentsRes, applicationsRes, profileRes, notificationsRes, postsRes, reviewsRes, monitorHitsRes] =
     await Promise.all([
       supabase
         .from('recruitments')
@@ -117,6 +119,11 @@ export async function fetchWorkspace(
         .from('community_reviews')
         .select('*')
         .order('created_at', { ascending: false }),
+      supabase
+        .from('monitor_hits')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50),
     ])
 
   if (recruitmentsRes.error) throw recruitmentsRes.error
@@ -175,6 +182,16 @@ export async function fetchWorkspace(
     })),
     communityPosts: posts,
     communityReviews: reviews,
+    monitorHits: (monitorHitsRes.error ? [] : (monitorHitsRes.data ?? [])).map((h) => ({
+      id: h.id,
+      sourceId: h.source_id,
+      title: h.title,
+      url: h.url,
+      snippet: h.snippet ?? '',
+      matchedKeywords: h.matched_keywords ?? [],
+      publishedAt: h.published_at,
+      createdAt: h.created_at,
+    })),
   }
 }
 

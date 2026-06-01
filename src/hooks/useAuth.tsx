@@ -11,7 +11,7 @@ import type { Session, SupabaseClient } from '@supabase/supabase-js'
 import { buildCalendarEvents, fetchWorkspace, insertApplication, insertCommunityNotification, insertCommunityPost, insertCommunityReview, markAllNotificationsRead, markNotificationRead, upsertProfile, type ProfileForm } from '../lib/workspaceDb'
 import { getSupabase } from '../lib/supabaseClient'
 import { formatError } from '../lib/formatError'
-import type { ApplicationRecord, CalendarEvent, CommunityPost, CommunityPostForm, CommunityReview, CommunityReviewForm, NotificationRecord, Profile, Recruitment } from '../types'
+import type { ApplicationRecord, CalendarEvent, CommunityPost, CommunityPostForm, CommunityReview, CommunityReviewForm, MonitorHit, NotificationRecord, Profile, Recruitment } from '../types'
 
 type AuthContextValue = {
   supabase: SupabaseClient | null
@@ -25,6 +25,7 @@ type AuthContextValue = {
   notifications: NotificationRecord[]
   communityPosts: CommunityPost[]
   communityReviews: CommunityReview[]
+  monitorHits: MonitorHit[]
   calendarEvents: CalendarEvent[]
   appliedRecruitmentIds: Set<string>
   unreadNotificationCount: number
@@ -55,6 +56,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<NotificationRecord[]>([])
   const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>([])
   const [communityReviews, setCommunityReviews] = useState<CommunityReview[]>([])
+  const [monitorHits, setMonitorHits] = useState<MonitorHit[]>([])
   const [authNotice, setAuthNotice] = useState<string | null>(null)
 
   const clearWorkspace = useCallback(() => {
@@ -64,6 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setNotifications([])
     setCommunityPosts([])
     setCommunityReviews([])
+    setMonitorHits([])
     setWorkspaceError(null)
     setWorkspaceLoading(false)
   }, [])
@@ -80,6 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setNotifications(data.notifications)
       setCommunityPosts(data.communityPosts)
       setCommunityReviews(data.communityReviews)
+      setMonitorHits(data.monitorHits)
     } catch (err) {
       setWorkspaceError(formatError(err))
     } finally {
@@ -228,6 +232,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     notifications,
     communityPosts,
     communityReviews,
+    monitorHits,
     calendarEvents,
     appliedRecruitmentIds,
     unreadNotificationCount,

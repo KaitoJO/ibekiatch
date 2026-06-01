@@ -10,13 +10,17 @@
     "preview": "vite preview",
     "db:push": "node scripts/supabase-db-push.mjs",
     "db:status": "node scripts/supabase-db-status.mjs",
-    "db:link": "supabase link"
+    "db:link": "supabase link",
+    "auth:smtp": "node scripts/setup-auth-smtp.mjs",
+    "monitor": "node scripts/monitor-run.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.2",
+    "cheerio": "^1.2.0",
     "lucide-react": "^1.17.0",
     "react": "^19.2.6",
-    "react-dom": "^19.2.6"
+    "react-dom": "^19.2.6",
+    "rss-parser": "^3.13.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -1,5 +1,16 @@
 export type TabId = 'home' | 'calendar' | 'notifications' | 'community' | 'profile'
 
+export type MonitorHit = {
+  id: string
+  sourceId: string
+  title: string
+  url: string | null
+  snippet: string
+  matchedKeywords: string[]
+  publishedAt: string | null
+  createdAt: string
+}
+
 export type Recruitment = {
   id: string
   title: string

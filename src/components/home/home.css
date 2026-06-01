@@ -26,6 +26,22 @@
   margin-top: 2px;
 }
 
+.home-header__tagline {
+  font-size: 12px;
+  opacity: 0.85;
+  margin-top: 4px;
+  font-weight: 500;
+}
+
+.home-section-label {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--color-text-secondary);
+  margin: 0 0 10px;
+  letter-spacing: 0.02em;
+}
+
+
 .home-header__actions {
   display: flex;
   gap: 8px;

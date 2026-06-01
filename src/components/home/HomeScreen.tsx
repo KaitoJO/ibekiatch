@@ -1,13 +1,17 @@
 import { useMemo, useRef, useState } from 'react'
 import { Bell, MapPin, Search, SlidersHorizontal, X } from 'lucide-react'
+import { APP_NAME, APP_TAGLINE, REGION_LABEL } from '../../lib/brand'
 import { deriveFilterOptions, filterRecruitments, formatFee } from '../../lib/recruitmentUtils'
 import { formatError } from '../../lib/formatError'
 import { useAuth } from '../../hooks/useAuth'
 import type { TabId } from '../../types'
+import { AiCollectedFeed } from './AiCollectedFeed'
 import { RecruitmentCard } from './RecruitmentCard'
 import { RecruitmentDetailScreen } from './RecruitmentDetailScreen'
 import '../shared/shared.css'
 import './home.css'
+
+const FREE_AI_HIT_LIMIT = 3
 
 type Props = {
   onNavigateTab: (tab: TabId) => void
@@ -18,6 +22,7 @@ export function HomeScreen({ onNavigateTab }: Props) {
     recruitments,
     applications,
     appliedRecruitmentIds,
+    monitorHits,
     applyToRecruitment,
     workspaceLoading,
     workspaceError,
@@ -92,8 +97,9 @@ export function HomeScreen({ onNavigateTab }: Props) {
       <header className="home-header">
         <div className="home-header__top">
           <div>
-            <p className="home-header__greeting">おはようございます 👋</p>
-            <h1 className="home-header__title">今日の出店募集</h1>
+            <p className="home-header__greeting">{APP_NAME} · {REGION_LABEL}</p>
+            <h1 className="home-header__title">{APP_TAGLINE}</h1>
+            <p className="home-header__tagline">AIが9ソースから出店募集を自動収集</p>
           </div>
           <div className="home-header__actions">
             <button
@@ -176,6 +182,14 @@ export function HomeScreen({ onNavigateTab }: Props) {
           </div>
         )}
         {applyError && <div className="alert alert--error">{applyError}</div>}
+
+        <AiCollectedFeed
+          hits={monitorHits}
+          limit={FREE_AI_HIT_LIMIT}
+          onUpgrade={() => onNavigateTab('profile')}
+        />
+
+        <p className="home-section-label">主催者掲載の募集</p>
 
         <section className="filter-section" aria-label="フィルター">
           <div className="filter-section__label">

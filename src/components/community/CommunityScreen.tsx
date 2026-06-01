@@ -238,7 +238,7 @@ export function CommunityScreen() {
           <div className="empty-block">
             <div className="empty-block__icon">💬</div>
             <p className="empty-block__title">投稿がありません</p>
-            <p>右上の「投稿」から出店レポートをシェアしてみましょう。</p>
+            <p>出店レポート・レビュー・評価で仲間と情報共有しましょう。</p>
           </div>
         ) : (
           communityPosts.map((post) => (

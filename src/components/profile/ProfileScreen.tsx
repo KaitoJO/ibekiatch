@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { AREAS, GENRES } from '../../data/mockRecruitments'
+import { SUBSCRIPTION_PLANS } from '../../lib/brand'
 import { useAuth } from '../../hooks/useAuth'
 import { formatDateTime, formatFee } from '../../lib/recruitmentUtils'
 import { ScreenHeader } from '../shared/ScreenHeader'
@@ -83,6 +84,39 @@ export function ProfileScreen() {
       </header>
 
       <div className="profile-body">
+        <section className="profile-card">
+          <h2 className="profile-card__title">プラン</h2>
+          <p className="profile-plan-intro">
+            キッチンカー・移動販売・露天営業者向け。AI収集の全件表示はスタンダード以上。
+          </p>
+          <div className="profile-plans">
+            {SUBSCRIPTION_PLANS.map((plan) => (
+              <div
+                key={plan.id}
+                className={`profile-plan${'recommended' in plan && plan.recommended ? ' profile-plan--recommended' : ''}`}
+              >
+                {'recommended' in plan && plan.recommended && (
+                  <span className="profile-plan__badge">おすすめ</span>
+                )}
+                <div className="profile-plan__head">
+                  <h3 className="profile-plan__name">{plan.name}</h3>
+                  <p className="profile-plan__price">{plan.priceLabel}</p>
+                </div>
+                <ul className="profile-plan__features">
+                  {plan.features.map((f) => (
+                    <li key={f}>{f}</li>
+                  ))}
+                </ul>
+                {plan.id !== 'free' && (
+                  <button type="button" className="profile-plan__btn" disabled>
+                    準備中
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+
         <section className="profile-card">
           <h2 className="profile-card__title">プロフィール</h2>
           <form onSubmit={onSave}>

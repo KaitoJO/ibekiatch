@@ -30,3 +30,17 @@ additional_redirect_urls = [
 [auth.email]
 enable_signup = true
 enable_confirmations = true
+max_frequency = "1s"
+
+[auth.email.smtp]
+enabled = true
+host = "smtp.resend.com"
+port = 465
+user = "resend"
+pass = "env(RESEND_API_KEY)"
+admin_email = "onboarding@resend.dev"
+sender_name = "ibekiatch"
+
+[auth.email.template.confirmation]
+subject = "ibekiatch アカウント確認"
+content_path = "./supabase/templates/confirm-signup.html"
