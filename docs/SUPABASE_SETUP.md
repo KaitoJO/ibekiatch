@@ -80,8 +80,13 @@ npm run db:push
 ## 4. 認証（メール＋パスワード）の設定
 
 1. **Authentication → Providers** で **Email** が有効になっていることを確認します。
-2. 開発中にメール確認なしで試す場合: **Authentication → Providers → Email** で **Confirm email** をオフにできます。
-3. **Authentication → URL Configuration** で、本番サイトの URL を **Site URL** に追加します（ローカルは `http://localhost:5173`）。
+2. **メールが届かない場合**（開発・本番共通）:
+   - **Authentication → Providers → Email** で **Confirm email（メール確認）を OFF** にする
+   - または `supabase/config.toml` の `[auth.email] enable_confirmations = false` を設定し `npx supabase config push --yes` を実行
+   - Supabase 無料枠のメールは届きにくい・迷惑メール行きになることがあります
+3. **Authentication → URL Configuration**:
+   - **Site URL**: `https://ibekiatch.vercel.app`（本番） / `http://localhost:5173`（ローカル）
+   - **Redirect URLs**: `https://ibekiatch.vercel.app/**` と `http://localhost:5173/**`
 
 ## 5. 動作確認
 

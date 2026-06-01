@@ -11,7 +11,7 @@ import { AuthProvider, useAuth } from './hooks/useAuth'
 import type { TabId } from './types'
 
 function AppContent() {
-  const { supabase, session, authReady, unreadNotificationCount } = useAuth()
+  const { supabase, session, authReady, unreadNotificationCount, authNotice, clearAuthNotice } = useAuth()
   const [activeTab, setActiveTab] = useState<TabId>('home')
 
   if (!authReady) {
@@ -41,6 +41,18 @@ function AppContent() {
 
   return (
     <div className="app-shell">
+      {authNotice && (
+        <div className="auth-verified-banner" role="status">
+          {authNotice}
+          <button
+            type="button"
+            onClick={clearAuthNotice}
+            style={{ marginLeft: 8, fontWeight: 800, textDecoration: 'underline' }}
+          >
+            閉じる
+          </button>
+        </div>
+      )}
       <main className="app-main">{renderScreen()}</main>
       <TabBar
         active={activeTab}

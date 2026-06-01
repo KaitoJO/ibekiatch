@@ -15,37 +15,14 @@
 
 ## Supabase セットアップ
 
-### 方法 A: CLI で自動実行（推奨）
-
 1. `.env.example` を `.env` にコピーし、次を設定:
    - `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY`
-   - `SUPABASE_ACCESS_TOKEN`（[Account → Access Tokens](https://supabase.com/dashboard/account/tokens)）
-   - `SUPABASE_DB_PASSWORD`（プロジェクト作成時の DB パスワード）
+   - `SUPABASE_ACCESS_TOKEN` / `SUPABASE_DB_PASSWORD`（CLI 用）
 
-2. マイグレーションをリモート DB に適用:
+2. `npm run db:push` でマイグレーション適用
 
-   ```bash
-   npm run db:push
-   ```
-
-   `001_ibekiatch_workspace.sql` と `002_seed_recruitments.sql`、続けて `003_extended_features.sql` が順番に実行されます。
-
-3. 適用状況の確認:
-
-   ```bash
-   npm run db:status
-   ```
-
-**初回のみ** `SUPABASE_ACCESS_TOKEN` の代わりに CLI ログインでも可:
-
-```bash
-npx supabase login
-npm run db:push
-```
-
-### 方法 B: SQL Editor で手動実行
-
-[docs/SUPABASE_SETUP.md](docs/SUPABASE_SETUP.md) の手順に従い、SQL Editor で 001 → 002 を実行してください。
+3. **確認メール（SMTP）**: [docs/AUTH_EMAIL_SETUP.md](docs/AUTH_EMAIL_SETUP.md) を参照  
+   新規登録時はメール確認必須です。Resend 等の SMTP 設定を推奨します。
 
 ## 開発
 
@@ -56,9 +33,25 @@ npm run dev
 
 ブラウザで `http://localhost:5173` を開き、DevTools のモバイル表示（幅 390px 前後）で確認するのがおすすめです。
 
-## ビルド
+## 本番（Vercel）
+
+- **Production URL**: https://ibekiatch.vercel.app
+- **GitHub**: https://github.com/KaitoJO/ibekiatch
+- **Vercel ダッシュボード**: https://vercel.com/kaitos-projects-f6bfe401/ibekiatch
+
+環境変数（Vercel → Settings → Environment Variables）:
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+
+Supabase **Authentication → URL Configuration** に本番 URL を追加:
+
+- Site URL: `https://ibekiatch.vercel.app`
+- Redirect URLs: `https://ibekiatch.vercel.app/**`
+
+再デプロイ:
 
 ```bash
-npm run build
-npm run preview
+npx vercel deploy --prod
 ```
+

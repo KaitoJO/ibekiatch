@@ -37,6 +37,8 @@ type AuthContextValue = {
   createCommunityPost: (form: CommunityPostForm) => Promise<void>
   createCommunityReview: (postId: string, form: CommunityReviewForm) => Promise<void>
   signOut: () => Promise<void>
+  authNotice: string | null
+  clearAuthNotice: () => void
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -53,6 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<NotificationRecord[]>([])
   const [communityPosts, setCommunityPosts] = useState<CommunityPost[]>([])
   const [communityReviews, setCommunityReviews] = useState<CommunityReview[]>([])
+  const [authNotice, setAuthNotice] = useState<string | null>(null)
 
   const clearWorkspace = useCallback(() => {
     setRecruitments([])
@@ -97,9 +100,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setAuthReady(true)
       }
     })
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, sess) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, sess) => {
       setSession(sess)
       if (!sess) clearWorkspace()
+      if (
+        event === 'SIGNED_IN' &&
+        typeof window !== 'undefined' &&
+        /type=(signup|email|magiclink)/.test(window.location.hash)
+      ) {
+        setAuthNotice('メール確認が完了しました。ようこそ！')
+        window.history.replaceState(null, '', window.location.pathname + window.location.search)
+      }
     })
     return () => {
       cancelled = true
@@ -229,6 +240,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     createCommunityPost,
     createCommunityReview,
     signOut,
+    authNotice,
+    clearAuthNotice: () => setAuthNotice(null),
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
