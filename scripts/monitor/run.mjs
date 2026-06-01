@@ -166,7 +166,7 @@ export async function runMonitor(options = {}) {
       if (result.skipped) {
         logger.log?.(`  skip: ${result.reason}`)
       } else if (result.error) {
-        logger.error?.(`  ✗ ${result.error}`)
+        logger.error?.(`  ✗ ${typeof result.error === 'string' ? result.error : JSON.stringify(result.error)}`)
       } else {
         logger.log?.(`  ✓ ${result.hits} 件保存`)
       }
