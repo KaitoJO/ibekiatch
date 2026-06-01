@@ -1,4 +1,4 @@
-/** 監視キーワード */
+/** 監視キーワード（RSS・Web一般） */
 export const MONITOR_KEYWORDS = [
   'キッチンカー',
   '移動販売',
@@ -10,6 +10,19 @@ export const MONITOR_KEYWORDS = [
   'キッチンカー募集',
   'フード出店',
 ]
+
+/** SNS（X / Instagram / Threads）監視キーワード */
+export const SNS_KEYWORDS = [
+  'キッチンカー募集',
+  '出店者募集',
+  'マルシェ出店',
+  'フードトラック募集',
+  '移動販売募集',
+  'キッチンカー 出店',
+  'マルシェ 募集',
+]
+
+export const PLAYWRIGHT_SOCIAL_SOURCES = ['twitter', 'instagram', 'threads']
 
 /** 三重県 市町村公式（イベント・お知らせページ） */
 export const MIE_CITY_PAGES = [

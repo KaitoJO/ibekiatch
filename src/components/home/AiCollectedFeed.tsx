@@ -7,6 +7,9 @@ const SOURCE_LABELS: Record<string, string> = {
   peatix: 'Peatix',
   google_news: 'Googleニュース',
   jmty: 'ジモティー',
+  twitter: 'X',
+  instagram: 'Instagram',
+  threads: 'Threads',
   mie_cities: '市町村HP',
   shokokai: '商工会',
   michinoeki: '道の駅',
@@ -31,7 +34,7 @@ export function AiCollectedFeed({ hits, limit, onUpgrade }: Props) {
           <Sparkles size={18} className="ai-feed__icon" />
           <div>
             <h2 className="ai-feed__title">AI収集の新着</h2>
-            <p className="ai-feed__sub">9ソースから1時間ごとに自動収集中</p>
+            <p className="ai-feed__sub">12ソースから1時間ごとに自動収集中</p>
           </div>
         </div>
         <p className="ai-feed__empty-text">新着情報が入るとここに表示されます。</p>
@@ -45,7 +48,7 @@ export function AiCollectedFeed({ hits, limit, onUpgrade }: Props) {
         <Sparkles size={18} className="ai-feed__icon" />
         <div>
           <h2 className="ai-feed__title">AI収集の新着</h2>
-          <p className="ai-feed__sub">{hits.length}件 · 9ソースから自動収集</p>
+          <p className="ai-feed__sub">{hits.length}件 · 12ソースから自動収集</p>
         </div>
       </div>
 

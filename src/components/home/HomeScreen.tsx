@@ -99,7 +99,7 @@ export function HomeScreen({ onNavigateTab }: Props) {
           <div>
             <p className="home-header__greeting">{APP_NAME} · {REGION_LABEL}</p>
             <h1 className="home-header__title">{APP_TAGLINE}</h1>
-            <p className="home-header__tagline">AIが9ソースから出店募集を自動収集</p>
+            <p className="home-header__tagline">AIが12ソースから出店募集を自動収集</p>
           </div>
           <div className="home-header__actions">
             <button

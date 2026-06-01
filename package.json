@@ -12,12 +12,16 @@
     "db:status": "node scripts/supabase-db-status.mjs",
     "db:link": "supabase link",
     "auth:smtp": "node scripts/setup-auth-smtp.mjs",
-    "monitor": "node scripts/monitor-run.mjs"
+    "monitor": "node scripts/monitor-run.mjs",
+    "monitor:social": "node scripts/monitor-run.mjs twitter instagram threads",
+    "playwright:install": "playwright install chromium"
   },
   "dependencies": {
+    "@sparticuz/chromium": "^131.0.1",
     "@supabase/supabase-js": "^2.106.2",
     "cheerio": "^1.2.0",
     "lucide-react": "^1.17.0",
+    "playwright-core": "^1.51.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "rss-parser": "^3.13.0"
@@ -32,6 +36,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.6.0",
+    "playwright": "^1.51.0",
     "supabase": "^2.102.0",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",

@@ -2,7 +2,9 @@ import {
   MICHINOEKI_PAGES,
   MIE_CITY_PAGES,
   MONITOR_KEYWORDS,
+  PLAYWRIGHT_SOCIAL_SOURCES,
   SHOKOKAI_PAGES,
+  SNS_KEYWORDS,
 } from './config.mjs'
 import {
   extractLinks,
@@ -13,16 +15,15 @@ import {
   kokuchizRssUrl,
   parseRssFeed,
   runFacebookSource,
-  runInstagramSource,
-  runTwitterSource,
   scrapeSearchPages,
   scrapeStaticPages,
   toMonitorItems,
   updateSourceRun,
   upsertHits,
 } from './lib.mjs'
+import { runAllPlaywrightSocialSources } from './playwright-social.mjs'
 
-const JOBS = [
+const REGULAR_JOBS = [
   ['kokuchiz', async () => {
     const all = []
     for (const keyword of MONITOR_KEYWORDS) {
@@ -73,12 +74,10 @@ const JOBS = [
       raw: { source: 'maipure' },
     }))
   }],
-  ['twitter', runTwitterSource],
-  ['instagram', runInstagramSource],
   ['facebook', runFacebookSource],
 ]
 
-async function runSource(sourceId, fn) {
+async function runSource(sourceId, fn, keywordList = MONITOR_KEYWORDS) {
   const supabase = getAdminSupabase()
   try {
     const raw = await fn()
@@ -86,7 +85,7 @@ async function runSource(sourceId, fn) {
       await updateSourceRun(supabase, sourceId, 'skipped', raw.reason)
       return { sourceId, hits: 0, skipped: true, reason: raw.reason }
     }
-    const hits = toMonitorItems(sourceId, raw)
+    const hits = toMonitorItems(sourceId, raw, keywordList)
     await upsertHits(supabase, hits)
     await updateSourceRun(supabase, sourceId, 'ok')
     return { sourceId, hits: hits.length }
@@ -97,18 +96,55 @@ async function runSource(sourceId, fn) {
   }
 }
 
+async function runPlaywrightSources(sourceIds, logger = console) {
+  const results = []
+  const batch = await runAllPlaywrightSocialSources(sourceIds)
+
+  for (const sourceId of sourceIds) {
+    logger.log?.(`▶ ${sourceId} (playwright)`)
+    const entry = batch[sourceId]
+    if (!entry) continue
+
+    if (entry.skipped) {
+      const result = await runSource(sourceId, async () => ({
+        skipped: true,
+        reason: entry.reason,
+      }), SNS_KEYWORDS)
+      results.push(result)
+      logger.log?.(`  skip: ${entry.reason}`)
+      continue
+    }
+
+    const result = await runSource(sourceId, async () => entry.items, SNS_KEYWORDS)
+    results.push(result)
+    if (result.error) {
+      logger.error?.(`  ✗ ${result.error}`)
+    } else {
+      logger.log?.(`  ✓ ${result.hits} 件保存`)
+    }
+  }
+
+  return results
+}
+
 /**
  * @param {{ sources?: string[] | null, logger?: Pick<Console, 'log' | 'error' | 'warn'> }} [options]
  */
 export async function runMonitor(options = {}) {
   const { sources = null, logger = console } = options
   const runAll = !sources || sources.length === 0
-  const pending = JOBS.filter(([id]) => runAll || sources.includes(id))
 
-  logger.log?.(`monitor: ${pending.length} ソース実行`)
+  const regularPending = REGULAR_JOBS.filter(([id]) => runAll || sources.includes(id))
+  const playwrightPending = PLAYWRIGHT_SOCIAL_SOURCES.filter(
+    (id) => runAll || sources.includes(id),
+  )
 
-  const results = await Promise.all(
-    pending.map(async ([id, fn]) => {
+  logger.log?.(
+    `monitor: ${regularPending.length} 通常ソース + ${playwrightPending.length} SNS(Playwright)`,
+  )
+
+  const regularResults = await Promise.all(
+    regularPending.map(async ([id, fn]) => {
       logger.log?.(`▶ ${id}`)
       const result = await runSource(id, fn)
       if (result.skipped) {
@@ -122,6 +158,12 @@ export async function runMonitor(options = {}) {
     }),
   )
 
+  const playwrightResults =
+    playwrightPending.length > 0
+      ? await runPlaywrightSources(playwrightPending, logger)
+      : []
+
+  const results = [...regularResults, ...playwrightResults]
   const saved = results.reduce((n, r) => n + (r.hits ?? 0), 0)
   const errors = results.filter((r) => r.error)
   return { saved, results, errors, sourceCount: results.length }

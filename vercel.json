@@ -5,7 +5,8 @@
   "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }],
   "functions": {
     "api/cron/monitor.js": {
-      "maxDuration": 300
+      "maxDuration": 300,
+      "memory": 1024
     }
   }
 }

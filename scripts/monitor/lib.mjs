@@ -95,11 +95,14 @@ export async function parseRssFeed(url) {
   }))
 }
 
-export function toMonitorItems(sourceId, rawItems) {
+export function toMonitorItems(sourceId, rawItems, keywords = MONITOR_KEYWORDS) {
   const out = []
   for (const item of rawItems) {
     const blob = `${item.title}\n${item.snippet}`
-    const matched = matchKeywords(blob)
+    const matched =
+      item.matchedKeywords?.length > 0
+        ? item.matchedKeywords
+        : matchKeywords(blob, keywords)
     if (matched.length === 0) continue
     out.push({
       source_id: sourceId,
