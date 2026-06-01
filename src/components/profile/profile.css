@@ -1,0 +1,221 @@
+.profile-screen {
+  padding-bottom: 24px;
+}
+
+.profile-header {
+  background: linear-gradient(160deg, #ff7a45 0%, #ff6b35 45%, #e85d04 100%);
+  padding: calc(20px + var(--safe-top)) 20px 32px;
+  border-radius: 0 0 28px 28px;
+  color: white;
+}
+
+.profile-header__avatar {
+  width: 72px;
+  height: 72px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  margin-bottom: 12px;
+  border: 3px solid rgba(255, 255, 255, 0.4);
+}
+
+.profile-header__name {
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.profile-header__email {
+  font-size: 13px;
+  opacity: 0.85;
+  margin-top: 4px;
+}
+
+.profile-stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.profile-stat {
+  background: rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(12px);
+  border-radius: var(--radius-md);
+  padding: 14px;
+  text-align: center;
+}
+
+.profile-stat__value {
+  font-size: 24px;
+  font-weight: 800;
+}
+
+.profile-stat__label {
+  font-size: 11px;
+  opacity: 0.85;
+  margin-top: 4px;
+}
+
+.profile-body {
+  padding: 20px 16px;
+  margin-top: -12px;
+}
+
+.profile-card {
+  background: var(--color-surface);
+  border-radius: var(--radius-xl);
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 16px;
+}
+
+.profile-card__title {
+  font-size: 15px;
+  font-weight: 800;
+  margin-bottom: 16px;
+}
+
+.profile-field {
+  margin-bottom: 14px;
+}
+
+.profile-field__label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  margin-bottom: 6px;
+  letter-spacing: 0.04em;
+}
+
+.profile-field__input,
+.profile-field__select {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--color-border);
+  font-size: 14px;
+  font-family: inherit;
+  background: var(--color-bg);
+}
+
+.profile-field__input:focus,
+.profile-field__select:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.profile-save {
+  width: 100%;
+  padding: 14px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+  color: white;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: var(--shadow-md);
+}
+
+.profile-save:disabled {
+  opacity: 0.65;
+}
+
+.profile-message {
+  font-size: 13px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+}
+
+.profile-message--ok {
+  background: var(--color-primary-light);
+  color: var(--color-primary-dark);
+}
+
+.profile-message--err {
+  background: #fff5f5;
+  color: #b91c1c;
+}
+
+.profile-logout {
+  width: 100%;
+  padding: 14px;
+  border-radius: var(--radius-full);
+  border: 1.5px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.profile-applications {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.profile-header--compact {
+  padding-top: 0;
+  border-radius: 0 0 28px 28px;
+}
+
+.profile-empty {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.profile-application-item__main {
+  flex: 1;
+  min-width: 0;
+}
+
+.profile-application-item__sub {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin-top: 4px;
+}
+
+.profile-application-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+}
+
+.profile-application-item__title {
+  font-size: 13px;
+  font-weight: 700;
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.profile-application-item__status {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.profile-application-item__status--pending {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
+.profile-application-item__status--accepted {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.profile-application-item__status--rejected {
+  background: #fee2e2;
+  color: #b91c1c;
+}

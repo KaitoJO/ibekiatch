@@ -1,0 +1,133 @@
+.calendar-screen {
+  padding-bottom: 24px;
+}
+
+.calendar-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+}
+
+.calendar-nav__btn {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.calendar-nav__label {
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  padding: 0 12px 16px;
+}
+
+.calendar-grid__head {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  padding: 8px 0;
+}
+
+.calendar-grid__head--sun {
+  color: #ef4444;
+}
+
+.calendar-grid__head--sat {
+  color: #3b82f6;
+}
+
+.calendar-day {
+  aspect-ratio: 1;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.calendar-day--empty {
+  pointer-events: none;
+}
+
+.calendar-day--today {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
+.calendar-day--selected {
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+  color: white;
+}
+
+.calendar-day--has-event .calendar-day__dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-primary);
+}
+
+.calendar-day--selected .calendar-day__dot {
+  background: white;
+}
+
+.calendar-events {
+  padding: 0 16px;
+}
+
+.calendar-events__title {
+  font-size: 15px;
+  font-weight: 800;
+  margin-bottom: 12px;
+}
+
+.calendar-event-card {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  margin-bottom: 10px;
+  box-shadow: var(--shadow-sm);
+}
+
+.calendar-event-card__title {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.calendar-event-card__meta {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.calendar-event-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+}
+
+.calendar-event-card__fee {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--color-primary);
+}
