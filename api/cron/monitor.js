@@ -8,15 +8,22 @@ function getExpectedToken() {
   return (process.env.MONITOR_CRON_TOKEN || process.env.CRON_SECRET || '').trim()
 }
 
-function extractToken(request) {
-  const url = new URL(request.url)
+function headerValue(headers, name) {
+  const value = headers[name] ?? headers[name.toLowerCase()]
+  if (Array.isArray(value)) return value[0]?.trim()
+  return value?.trim()
+}
+
+function extractToken(req) {
+  const host = headerValue(req.headers, 'host') || 'localhost'
+  const url = new URL(req.url ?? '/', `https://${host}`)
   const queryToken = url.searchParams.get('token')?.trim()
   if (queryToken) return queryToken
 
-  const headerToken = request.headers.get('x-monitor-token')?.trim()
+  const headerToken = headerValue(req.headers, 'x-monitor-token')
   if (headerToken) return headerToken
 
-  const auth = request.headers.get('authorization')?.trim()
+  const auth = headerValue(req.headers, 'authorization')
   if (auth?.toLowerCase().startsWith('bearer ')) {
     return auth.slice(7).trim()
   }
@@ -24,13 +31,13 @@ function extractToken(request) {
   return null
 }
 
-function verifyAuth(request) {
+function verifyAuth(req) {
   const expected = getExpectedToken()
   if (!expected) {
     return { ok: false, status: 503, message: 'MONITOR_CRON_TOKEN is not configured' }
   }
 
-  const provided = extractToken(request)
+  const provided = extractToken(req)
   if (!provided || provided !== expected) {
     return { ok: false, status: 401, message: 'Unauthorized' }
   }
@@ -38,19 +45,19 @@ function verifyAuth(request) {
   return { ok: true }
 }
 
-export default async function handler(request) {
-  if (request.method !== 'GET' && request.method !== 'POST') {
-    return new Response('Method Not Allowed', { status: 405 })
+export default async function handler(req, res) {
+  if (req.method !== 'GET' && req.method !== 'POST') {
+    return res.status(405).send('Method Not Allowed')
   }
 
-  const auth = verifyAuth(request)
+  const auth = verifyAuth(req)
   if (!auth.ok) {
-    return Response.json({ ok: false, error: auth.message }, { status: auth.status })
+    return res.status(auth.status).json({ ok: false, error: auth.message })
   }
 
   try {
     const { saved, results, errors, sourceCount } = await runMonitor({ logger: console })
-    return Response.json({
+    return res.status(200).json({
       ok: true,
       saved,
       sourceCount,
@@ -64,6 +71,6 @@ export default async function handler(request) {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.error('monitor cron failed:', message)
-    return Response.json({ ok: false, error: message }, { status: 500 })
+    return res.status(500).json({ ok: false, error: message })
   }
 }
