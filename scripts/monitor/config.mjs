@@ -22,16 +22,68 @@ export const SNS_KEYWORDS = [
   'マルシェ 募集',
 ]
 
-export const PLAYWRIGHT_SOCIAL_SOURCES = ['twitter', 'instagram', 'threads']
+export const PLAYWRIGHT_SOCIAL_SOURCES = ['twitter', 'instagram', 'threads', 'facebook']
 
-/** 三重県 市町村公式（イベント・お知らせページ） */
+/** 三重県 市町村公式（イベント・お知らせページを直接監視） */
 export const MIE_CITY_PAGES = [
-  { id: 'tsu', name: '津市', urls: ['https://www.city.tsu.lg.jp/index.html'] },
-  { id: 'yokkaichi', name: '四日市市', urls: ['https://www.city.yokkaichi.lg.jp/'] },
-  { id: 'ise', name: '伊勢市', urls: ['https://www.city.ise.mie.jp/'] },
-  { id: 'matsusaka', name: '松阪市', urls: ['https://www.city.matsusaka.mie.jp/'] },
-  { id: 'suzuka', name: '鈴鹿市', urls: ['https://www.city.suzuka.lg.jp/'] },
-  { id: 'kuwana', name: '桑名市', urls: ['https://www.city.kuwana.lg.jp/'] },
+  {
+    id: 'tsu',
+    name: '津市',
+    urls: [
+      'https://www.info.city.tsu.mie.jp/',
+      'https://www.info.city.tsu.mie.jp/newslist.html',
+      'https://www.info.city.tsu.mie.jp/event_calendar.html',
+    ],
+  },
+  {
+    id: 'yokkaichi',
+    name: '四日市市',
+    urls: [
+      'https://www.city.yokkaichi.lg.jp/',
+      'https://www.city.yokkaichi.lg.jp/www/news.html',
+      'https://yokkaichi-event.com/',
+    ],
+  },
+  {
+    id: 'ise',
+    name: '伊勢市',
+    urls: [
+      'https://www.city.ise.mie.jp/',
+      'https://www.city.ise.mie.jp/kankou/event/index.html',
+      'https://www.city.ise.mie.jp/shisei/kouhou/index.html',
+      'https://www.city.ise.mie.jp/machi/deai/deaievent/index.html',
+    ],
+  },
+  {
+    id: 'matsusaka',
+    name: '松阪市',
+    urls: [
+      'https://www.city.matsusaka.mie.jp/',
+      'https://www.city.matsusaka.mie.jp/site/kouhou/',
+      'https://www.city.matsusaka.mie.jp/calendar/',
+      'https://matsusaka-event.com/',
+    ],
+  },
+  {
+    id: 'suzuka',
+    name: '鈴鹿市',
+    urls: [
+      'https://www.city.suzuka.lg.jp/',
+      'https://www.city.suzuka.lg.jp/bunka/event/index.html',
+      'https://www.city.suzuka.lg.jp/event_calendar.html',
+      'https://www.city.suzuka.lg.jp/newslist.html',
+    ],
+  },
+  {
+    id: 'kuwana',
+    name: '桑名市',
+    urls: [
+      'https://www.city.kuwana.lg.jp/',
+      'https://www.city.kuwana.lg.jp/oshirase/index.html',
+      'https://www.city.kuwana.lg.jp/cgi-bin/event_cal_multi/calendar.cgi',
+      'https://www.city.kuwana.lg.jp/brand/event/j10.html',
+    ],
+  },
 ]
 
 export const SHOKOKAI_PAGES = [

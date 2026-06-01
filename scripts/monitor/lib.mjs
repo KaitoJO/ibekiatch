@@ -350,6 +350,117 @@ export async function scrapeEventbank(keywords = MONITOR_KEYWORDS) {
   return raw
 }
 
+/** Google 検索（fetch + cheerio）— SNS フォールバック用 */
+export async function scrapeGoogleSiteFetch(keyword, { buildQuery, linkIncludes = [], urlPattern = null }) {
+  const query = buildQuery(keyword)
+  const url = `https://www.google.com/search?q=${encodeURIComponent(query)}&hl=ja&num=20`
+  const html = await fetchText(url)
+  const $ = cheerio.load(html)
+  const items = []
+  const seen = new Set()
+
+  $('a[href]').each((_, el) => {
+    const href = $(el).attr('href')
+    if (!href) return
+    let linkUrl = href
+    if (href.startsWith('/url?q=')) {
+      try {
+        linkUrl = new URL(href, 'https://www.google.com').searchParams.get('q') ?? href
+      } catch {
+        return
+      }
+    }
+    if (linkIncludes.length > 0 && !linkIncludes.some((s) => linkUrl.includes(s))) return
+    if (urlPattern && !urlPattern.test(linkUrl)) return
+    const block = $(el).closest('div').parent()
+    const title =
+      block.find('h3').first().text().trim() ||
+      $(el).text().replace(/\s+/g, ' ').trim()
+    if (!title || title.length < 8) return
+    if (seen.has(linkUrl)) return
+    seen.add(linkUrl)
+    items.push({
+      externalId: hashId(linkUrl),
+      title,
+      url: linkUrl,
+      snippet: title,
+      publishedAt: null,
+      raw: { keyword, via: 'google-fetch' },
+    })
+  })
+  return items
+}
+
+/** Google News RSS — SNS サイト内検索（fetch ベースで安定） */
+export async function scrapeGoogleNewsSite(keyword, { siteDomain, limit = 25 }) {
+  const query = `site:${siteDomain} ${keyword}`
+  const url = `https://news.google.com/rss/search?q=${encodeURIComponent(query)}&hl=ja&gl=JP&ceid=JP:ja`
+  const feedItems = await parseRssFeed(url)
+  const items = []
+  const seen = new Set()
+  const domainHint = siteDomain.replace(/^www\./, '').toLowerCase()
+  for (const item of feedItems) {
+    if (items.length >= limit) break
+    const linkUrl = item.url ?? ''
+    if (!linkUrl.startsWith('http')) continue
+    const blob = `${item.title} ${item.snippet}`.toLowerCase()
+    if (!blob.includes(domainHint) && !linkUrl.includes(domainHint)) continue
+    if (seen.has(linkUrl)) continue
+    seen.add(linkUrl)
+    items.push({
+      externalId: hashId(linkUrl),
+      title: item.title,
+      url: linkUrl,
+      snippet: item.snippet || item.title,
+      publishedAt: item.publishedAt,
+      raw: { keyword, siteDomain, via: 'google-news-rss' },
+    })
+  }
+  return items
+}
+
+/** DuckDuckGo HTML 検索 — Google ブロック時の SNS フォールバック */
+export async function scrapeDdgSiteFetch(keyword, { buildQuery, linkIncludes = [], urlPattern = null }) {
+  const query = buildQuery(keyword)
+  const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`
+  const html = await fetchText(url)
+  const $ = cheerio.load(html)
+  const items = []
+  const seen = new Set()
+
+  $('a.result__a, a.result__url').each((_, el) => {
+    const href = $(el).attr('href')
+    if (!href) return
+    let linkUrl = href
+    if (href.includes('uddg=')) {
+      try {
+        linkUrl = decodeURIComponent(
+          new URL(href, 'https://duckduckgo.com').searchParams.get('uddg') ?? href,
+        )
+      } catch {
+        return
+      }
+    }
+    if (!linkUrl.startsWith('http')) return
+    if (/duckduckgo\.com\/y\.js|ad_domain=/i.test(linkUrl)) return
+    if (linkIncludes.length > 0 && !linkIncludes.some((s) => linkUrl.includes(s))) return
+    if (urlPattern && !urlPattern.test(linkUrl)) return
+    const title = $(el).text().replace(/\s+/g, ' ').trim()
+    if (!title || title.length < 6) return
+    if (seen.has(linkUrl)) return
+    seen.add(linkUrl)
+    items.push({
+      externalId: hashId(linkUrl),
+      title,
+      url: linkUrl,
+      snippet: title,
+      publishedAt: null,
+      raw: { keyword, via: 'ddg-fetch' },
+    })
+  })
+  return items
+}
+
 export async function scrapeMichinoeki(pages) {
   const { MICHINOEKI_PAGES } = await import('./config.mjs')
   const targetPages = pages ?? MICHINOEKI_PAGES
@@ -385,6 +496,90 @@ export async function scrapeMichinoeki(pages) {
         })
       } catch (err) {
         console.warn(`[michinoeki] skip ${page.name}:`, err.message)
+      }
+    }
+  }
+  return raw
+}
+
+/** 三重県市町村のイベント・お知らせページを直接スクレイプ */
+export async function scrapeMieCities(pages) {
+  const { MIE_CITY_PAGES } = await import('./config.mjs')
+  const targetPages = pages ?? MIE_CITY_PAGES
+  const seen = new Set()
+  const raw = []
+
+  function pushEntry({ cityName, title, url, snippet, sourceUrl }) {
+    const cleanTitle = (title ?? '').replace(/\s+/g, ' ').trim()
+    if (!cleanTitle || cleanTitle.length < 4) return
+    const cleanSnippet = (snippet ?? cleanTitle).replace(/\s+/g, ' ').trim().slice(0, 500)
+    const key = url || `${cityName}:${cleanTitle}`
+    if (seen.has(key)) return
+    seen.add(key)
+    raw.push({
+      externalId: hashId(key),
+      title: `[${cityName}] ${cleanTitle}`,
+      url,
+      snippet: cleanSnippet,
+      publishedAt: null,
+      raw: { page: cityName, sourceUrl },
+    })
+  }
+
+  for (const page of targetPages) {
+    for (const url of page.urls ?? [page.url]) {
+      if (!url) continue
+      try {
+        const html = await fetchText(url)
+        const $ = cheerio.load(html)
+
+        $('a[href]').each((_, el) => {
+          const title = $(el).text().replace(/\s+/g, ' ').trim()
+          const href = $(el).attr('href')
+          if (!title || !href || title.length < 4) return
+          let linkUrl
+          try {
+            linkUrl = new URL(href, url).toString()
+          } catch {
+            return
+          }
+          const parent = $(el).closest('li, tr, article, dd, .news, .list, .item')
+          const snippet =
+            parent.length > 0
+              ? parent.text().replace(/\s+/g, ' ').trim().slice(0, 500)
+              : title
+          pushEntry({
+            cityName: page.name,
+            title,
+            url: linkUrl,
+            snippet,
+            sourceUrl: url,
+          })
+        })
+
+        $('table tr, ul.news li, ul li, dl dt, .event-item, .calendar-item').each((_, el) => {
+          const text = $(el).text().replace(/\s+/g, ' ').trim()
+          if (text.length < 8 || text.length > 400) return
+          const link = $(el).find('a[href]').first()
+          const title = link.length ? link.text().replace(/\s+/g, ' ').trim() : text.slice(0, 120)
+          let linkUrl = url
+          if (link.length) {
+            try {
+              linkUrl = new URL(link.attr('href'), url).toString()
+            } catch {
+              linkUrl = url
+            }
+          }
+          pushEntry({
+            cityName: page.name,
+            title,
+            url: linkUrl,
+            snippet: text,
+            sourceUrl: url,
+          })
+        })
+      } catch (err) {
+        console.warn(`[mie_cities] skip ${page.name} ${url}:`, err.message)
       }
     }
   }

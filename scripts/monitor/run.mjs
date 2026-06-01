@@ -11,11 +11,11 @@ import {
   googleNewsRssUrl,
   kokuchizRssUrl,
   parseRssFeed,
-  runFacebookSource,
   scrapeEventbank,
   scrapeJmty,
   scrapeMaipureMie,
   scrapeMichinoeki,
+  scrapeMieCities,
   scrapeSearchPages,
   scrapeStaticPages,
   toMonitorItems,
@@ -55,11 +55,10 @@ const REGULAR_JOBS = [
   }],
   ['jmty', async () => scrapeJmty(MONITOR_KEYWORDS)],
   ['eventbank', async () => scrapeEventbank(MONITOR_KEYWORDS)],
-  ['mie_cities', async () => scrapeStaticPages('mie_cities', MIE_CITY_PAGES)],
+  ['mie_cities', async () => scrapeMieCities(MIE_CITY_PAGES)],
   ['shokokai', async () => scrapeStaticPages('shokokai', SHOKOKAI_PAGES)],
   ['michinoeki', async () => scrapeMichinoeki(MICHINOEKI_PAGES)],
   ['maipure_mie', async () => scrapeMaipureMie(MONITOR_KEYWORDS)],
-  ['facebook', runFacebookSource],
 ]
 
 async function runSource(sourceId, fn, keywordList = MONITOR_KEYWORDS, dryRun = false) {

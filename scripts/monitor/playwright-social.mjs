@@ -1,5 +1,5 @@
 import { DEFAULT_UA, SNS_KEYWORDS } from './config.mjs'
-import { hashId, matchKeywords } from './lib.mjs'
+import { hashId, matchKeywords, scrapeDdgSiteFetch, scrapeGoogleNewsSite, scrapeGoogleSiteFetch } from './lib.mjs'
 
 const PAGE_TIMEOUT_MS = 25_000
 const SCROLL_PAUSE_MS = 800
@@ -90,6 +90,113 @@ function dedupeItems(items) {
   })
 }
 
+async function scrapeGoogleSiteSearch(page, keyword, { siteQuery, urlPattern, platform }) {
+  const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(siteQuery(keyword))}&hl=ja&num=20`
+  try {
+    await page.goto(googleUrl, { waitUntil: 'domcontentloaded', timeout: PAGE_TIMEOUT_MS })
+    await page.waitForTimeout(2000)
+    const googleHits = await page.evaluate((pattern) => {
+      const urlTest = new RegExp(pattern, 'i')
+      const out = []
+      const seen = new Set()
+      document.querySelectorAll('#search a[href], #rso a[href], div.g a[href], a[href]').forEach((a) => {
+        let href = a.href || ''
+        if (!href || href.includes('google.com/search') || href.includes('accounts.google')) return
+        href = href.split('&')[0].split('#')[0]
+        if (!urlTest.test(href)) return
+        if (seen.has(href)) return
+        seen.add(href)
+        const block = a.closest('[data-sokoban-container], div.g, div[data-hveid], li, div')
+        const h3 = block?.querySelector('h3')
+        const text = (h3?.textContent || block?.textContent || a.textContent || '')
+          .replace(/\s+/g, ' ')
+          .trim()
+        if (text.length > 10) out.push({ text, url: href, publishedAt: null })
+      })
+      return out.slice(0, 20)
+    }, urlPattern.source ?? String(urlPattern))
+    return googleHits
+      .map((p) =>
+        itemFromPost({
+          platform,
+          keyword,
+          text: p.text,
+          url: p.url,
+          publishedAt: p.publishedAt,
+          raw: { via: 'google' },
+        }),
+      )
+      .filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
+async function searchFallbackForSocial(page, keyword, {
+  siteQuery,
+  urlPattern,
+  platform,
+  linkIncludes,
+  ddgPattern,
+  newsSiteDomain,
+}) {
+  const mapFetch = (fetchRaw) =>
+    fetchRaw
+      .map((r) =>
+        itemFromPost({
+          platform,
+          keyword,
+          text: `${r.title} ${r.snippet}`,
+          url: r.url,
+          publishedAt: r.publishedAt,
+          raw: r.raw ?? { via: 'search-fetch' },
+        }),
+      )
+      .filter(Boolean)
+
+  if (newsSiteDomain) {
+    try {
+      const newsRaw = await scrapeGoogleNewsSite(keyword, {
+        siteDomain: newsSiteDomain,
+      })
+      const newsItems = mapFetch(newsRaw)
+      if (newsItems.length > 0) return newsItems
+    } catch {
+      // google news rss unavailable
+    }
+  }
+
+  const playwrightItems = await scrapeGoogleSiteSearch(page, keyword, {
+    siteQuery,
+    urlPattern,
+    platform,
+  })
+  if (playwrightItems.length > 0) return playwrightItems
+
+  try {
+    const googleRaw = await scrapeGoogleSiteFetch(keyword, {
+      buildQuery: siteQuery,
+      linkIncludes,
+      urlPattern,
+    })
+    const googleItems = mapFetch(googleRaw)
+    if (googleItems.length > 0) return googleItems
+  } catch {
+    // google fetch blocked
+  }
+
+  try {
+    const ddgRaw = await scrapeDdgSiteFetch(keyword, {
+      buildQuery: siteQuery,
+      linkIncludes,
+      urlPattern: ddgPattern ?? urlPattern,
+    })
+    return mapFetch(ddgRaw)
+  } catch {
+    return []
+  }
+}
+
 async function scrapeX(page, keyword) {
   const items = []
   let loginWall = false
@@ -150,116 +257,47 @@ async function scrapeX(page, keyword) {
   }
 
   if (items.length === 0) {
-    const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(`site:x.com ${keyword}`)}&hl=ja`
-    try {
-      await page.goto(googleUrl, { waitUntil: 'domcontentloaded', timeout: PAGE_TIMEOUT_MS })
-      await page.waitForTimeout(1500)
-      const googleHits = await page.evaluate(() => {
-        const out = []
-        document.querySelectorAll('a[href*="x.com"], a[href*="twitter.com"]').forEach((a) => {
-          const href = a.href
-          if (!/\/status\//.test(href)) return
-          const block = a.closest('div[data-sokoban-container]') ?? a.parentElement?.parentElement
-          const text = block?.textContent?.replace(/\s+/g, ' ').trim() ?? a.textContent?.trim() ?? ''
-          if (text.length > 12) out.push({ text, url: href.split('&')[0], publishedAt: null })
-        })
-        return out.slice(0, 15)
-      })
-      for (const p of googleHits) {
-        const item = itemFromPost({ platform: 'x', keyword, text: p.text, url: p.url, raw: { via: 'google' } })
-        if (item) items.push(item)
-      }
-    } catch {
-      // google fallback failed
-    }
+    const googleItems = await searchFallbackForSocial(page, keyword, {
+      siteQuery: (k) => `site:x.com ${k}`,
+      urlPattern: /\/status\//,
+      platform: 'x',
+      linkIncludes: ['x.com', 'twitter.com'],
+    })
+    items.push(...googleItems)
   }
 
   return { items: dedupeItems(items), loginWall: loginWall && items.length === 0 }
 }
 
 async function scrapeInstagram(page, keyword) {
-  const tag = keyword.replace(/\s+/g, '')
-  const urls = [
-    `https://www.instagram.com/explore/search/keyword/?q=${encodeURIComponent(keyword)}`,
-    `https://www.instagram.com/explore/tags/${encodeURIComponent(tag)}/`,
-  ]
-
-  const allItems = []
-  let loginWall = false
-
-  for (const url of urls) {
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: PAGE_TIMEOUT_MS })
-    await page.waitForTimeout(2500)
-    if (await detectLoginWall(page)) {
-      loginWall = true
-      continue
-    }
-    await gentleScroll(page, 2)
-
-    const posts = await page.evaluate(() => {
-      const out = []
-      const captions = document.querySelectorAll('article img[alt]')
-      captions.forEach((img) => {
-        const alt = img.getAttribute('alt')?.trim() ?? ''
-        const link = img.closest('a')?.getAttribute('href') ?? img.closest('article')?.querySelector('a')?.getAttribute('href')
-        const postUrl = link ? new URL(link, 'https://www.instagram.com').toString() : null
-        if (alt && alt.length > 10) out.push({ text: alt, url: postUrl })
-      })
-      if (out.length === 0) {
-        document.querySelectorAll('a[href*="/p/"], a[href*="/reel/"]').forEach((a) => {
-          const href = a.getAttribute('href')
-          const aria = a.getAttribute('aria-label') ?? ''
-          const text = aria || a.textContent?.trim() || ''
-          if (text.length > 8) {
-            out.push({
-              text,
-              url: href ? new URL(href, 'https://www.instagram.com').toString() : null,
-            })
-          }
-        })
-      }
-      return out.slice(0, 20)
-    })
-
-    for (const p of posts) {
-      const item = itemFromPost({ platform: 'instagram', keyword, text: p.text, url: p.url })
-      if (item) allItems.push(item)
-    }
-  }
-
-  if (allItems.length === 0) {
-    const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(`site:instagram.com ${keyword}`)}&hl=ja`
-    try {
-      await page.goto(googleUrl, { waitUntil: 'domcontentloaded', timeout: PAGE_TIMEOUT_MS })
-      await page.waitForTimeout(1500)
-      const googleHits = await page.evaluate(() => {
-        const out = []
-        document.querySelectorAll('a[href*="instagram.com/p/"], a[href*="instagram.com/reel/"]').forEach((a) => {
-          const href = a.href.split('&')[0]
-          const block = a.closest('div')?.parentElement
-          const text = block?.textContent?.replace(/\s+/g, ' ').trim() ?? ''
-          if (text.length > 12) out.push({ text, url: href })
-        })
-        return out.slice(0, 15)
-      })
-      for (const p of googleHits) {
-        const item = itemFromPost({ platform: 'instagram', keyword, text: p.text, url: p.url, raw: { via: 'google' } })
-        if (item) allItems.push(item)
-      }
-    } catch {
-      // google fallback failed
-    }
-  }
-
-  return { items: dedupeItems(allItems), loginWall: loginWall && allItems.length === 0 }
+  const items = await searchFallbackForSocial(page, keyword, {
+    siteQuery: (k) => `(site:instagram.com OR site:instagr.am) ${k}`,
+    urlPattern: /instagram\.com\/(p|reel|tv)\//,
+    ddgPattern: /instagram\.com\//,
+    newsSiteDomain: 'instagram.com',
+    platform: 'instagram',
+    linkIncludes: ['instagram.com', 'instagr.am'],
+  })
+  return { items: dedupeItems(items), loginWall: items.length === 0 }
 }
 
 async function scrapeThreads(page, keyword) {
   const url = `https://www.threads.net/search?q=${encodeURIComponent(keyword)}&serp_type=default`
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: PAGE_TIMEOUT_MS })
   await page.waitForTimeout(2500)
-  if (await detectLoginWall(page)) {
-    return { items: [], loginWall: true }
+  const loginWall = await detectLoginWall(page)
+  if (loginWall) {
+    const googleItems = await searchFallbackForSocial(page, keyword, {
+      siteQuery: (k) => `site:threads.net ${k}`,
+      urlPattern: /threads\.net\/.*\/post\//,
+      ddgPattern: /threads\.net\//,
+      platform: 'threads',
+      linkIncludes: ['threads.net'],
+    })
+    return {
+      items: dedupeItems(googleItems),
+      loginWall: googleItems.length === 0,
+    }
   }
   await gentleScroll(page, 2)
 
@@ -289,37 +327,36 @@ async function scrapeThreads(page, keyword) {
     .filter(Boolean)
 
   if (items.length === 0) {
-    const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(`site:threads.net ${keyword}`)}&hl=ja`
-    try {
-      await page.goto(googleUrl, { waitUntil: 'domcontentloaded', timeout: PAGE_TIMEOUT_MS })
-      await page.waitForTimeout(1500)
-      const googleHits = await page.evaluate(() => {
-        const out = []
-        document.querySelectorAll('a[href*="threads.net"]').forEach((a) => {
-          const href = a.href.split('&')[0]
-          if (!/\/post\//.test(href)) return
-          const block = a.closest('div')?.parentElement
-          const text = block?.textContent?.replace(/\s+/g, ' ').trim() ?? ''
-          if (text.length > 12) out.push({ text, url: href })
-        })
-        return out.slice(0, 15)
-      })
-      for (const p of googleHits) {
-        const item = itemFromPost({ platform: 'threads', keyword, text: p.text, url: p.url, raw: { via: 'google' } })
-        if (item) items.push(item)
-      }
-    } catch {
-      // google fallback failed
-    }
+    const googleItems = await searchFallbackForSocial(page, keyword, {
+      siteQuery: (k) => `site:threads.net ${k}`,
+      urlPattern: /threads\.net\/.*\/post\//,
+      ddgPattern: /threads\.net\//,
+      platform: 'threads',
+      linkIncludes: ['threads.net'],
+    })
+    items.push(...googleItems)
   }
 
   return { items: dedupeItems(items), loginWall: false }
+}
+
+async function scrapeFacebook(page, keyword) {
+  const items = await searchFallbackForSocial(page, keyword, {
+    siteQuery: (k) => `(site:facebook.com OR site:fb.com) ${k}`,
+    urlPattern: /facebook\.com\/(posts|groups|events|photo|watch|permalink|story|share|videos)/,
+    ddgPattern: /facebook\.com\//,
+    newsSiteDomain: 'facebook.com',
+    platform: 'facebook',
+    linkIncludes: ['facebook.com', 'fb.com'],
+  })
+  return { items: dedupeItems(items), loginWall: items.length === 0 }
 }
 
 const SCRAPERS = {
   twitter: scrapeX,
   instagram: scrapeInstagram,
   threads: scrapeThreads,
+  facebook: scrapeFacebook,
 }
 
 export async function runPlaywrightSocialSource(sourceId) {
@@ -371,7 +408,10 @@ export async function runAllPlaywrightSocialSources(sourceIds = ['twitter', 'ins
       results[sourceId] = {
         items: dedupeItems(all),
         skipped: all.length === 0 && loginWallHit,
-        reason: loginWallHit ? 'ログインウォールにより公開投稿を取得できませんでした' : null,
+        reason:
+          all.length === 0 && loginWallHit
+            ? 'ログインウォールにより公開投稿を取得できませんでした'
+            : null,
       }
     }
     return results
