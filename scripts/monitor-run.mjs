@@ -17,9 +17,18 @@ for (const [k, v] of Object.entries(fileEnv)) {
   if (!process.env[k]) process.env[k] = v
 }
 
-const selected = process.argv.slice(2)
+const args = process.argv.slice(2).filter((a) => a !== '--dry-run')
+const dryRun =
+  process.argv.includes('--dry-run') ||
+  !(process.env.SUPABASE_SERVICE_ROLE_KEY || fileEnv.SUPABASE_SERVICE_ROLE_KEY)?.trim()
+
+if (dryRun && !(process.env.SUPABASE_SERVICE_ROLE_KEY || fileEnv.SUPABASE_SERVICE_ROLE_KEY)?.trim()) {
+  console.log('注意: SUPABASE_SERVICE_ROLE_KEY 未設定のため dry-run で実行します')
+}
+
 const { saved, results, errors } = await runMonitor({
-  sources: selected.length > 0 ? selected : null,
+  sources: args.length > 0 ? args : null,
+  dryRun,
 })
 
 console.log(`\n完了: ${saved} 件保存 / ${results.length} ソース実行`)

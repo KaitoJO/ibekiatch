@@ -41,9 +41,20 @@ export const SHOKOKAI_PAGES = [
 ]
 
 export const MICHINOEKI_PAGES = [
-  { name: '三重県道の駅', url: 'https://www.mie-kankou.jp/event/' },
-  { name: '道の駅情報', url: 'https://www.michinoeki.jp/' },
+  { name: '道の駅公式', url: 'https://www.michi-no-eki.jp/' },
+  { name: '道の駅お知らせ', url: 'https://www.michi-no-eki.jp/notices' },
+  { name: '三重県観光イベント', url: 'https://www.kankomie.or.jp/event/' },
 ]
+
+export const JMty_SEARCH_BASE =
+  'https://jmty.jp/mie/search?keyword={keyword}&prefecture_name=mie&category_group={category}'
+
+export const JMty_CATEGORIES = ['sale', 'rec']
+
+export const MAIPURE_MIE_BASE = 'https://mie.mypl.net'
+
+export const EVENTBANK_SEARCH =
+  'https://www.google.com/search?q={keyword}&hl=ja'
 
 export const DEFAULT_UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 ibekiatch-monitor/1.0'

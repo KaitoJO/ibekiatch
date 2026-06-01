@@ -163,6 +163,13 @@ export function kokuchizRssUrl(keyword) {
   return `https://www.kokuchpro.com/s/q-${encodeURIComponent(keyword)}.rss`
 }
 
+function keywordsForSearch(title, keyword, keywords = MONITOR_KEYWORDS) {
+  const fromText = matchKeywords(`${title}\n${keyword}`, keywords)
+  if (fromText.length > 0) return fromText
+  if (keywords.includes(keyword)) return [keyword]
+  return []
+}
+
 export async function scrapeSearchPages(sourceId, searchUrlPattern, keywords) {
   const seen = new Set()
   const raw = []
@@ -180,11 +187,205 @@ export async function scrapeSearchPages(sourceId, searchUrlPattern, keywords) {
           url: link.url,
           snippet: link.snippet,
           publishedAt: null,
+          matchedKeywords: keywordsForSearch(link.title, keyword),
           raw: { keyword, sourceUrl: url },
         })
       }
     } catch (err) {
       console.warn(`[${sourceId}] skip ${keyword}:`, err.message)
+    }
+  }
+  return raw
+}
+
+export async function scrapeJmty(keywords = MONITOR_KEYWORDS) {
+  const { JMty_CATEGORIES, JMty_SEARCH_BASE } = await import('./config.mjs')
+  const seen = new Set()
+  const raw = []
+  for (const keyword of keywords) {
+    for (const category of JMty_CATEGORIES) {
+      const url = JMty_SEARCH_BASE.replace('{keyword}', encodeURIComponent(keyword)).replace(
+        '{category}',
+        category,
+      )
+      try {
+        const html = await fetchText(url)
+        const $ = cheerio.load(html)
+        $('a[href*="/article-"], a[href*="/sale?keyword="]').each((_, el) => {
+          const title = $(el).text().replace(/\s+/g, ' ').trim()
+          const href = $(el).attr('href')
+          if (!title || !href || title.length < 4) return
+          const linkUrl = new URL(href, 'https://jmty.jp').toString()
+          if (seen.has(linkUrl)) return
+          seen.add(linkUrl)
+          raw.push({
+            externalId: hashId(linkUrl),
+            title,
+            url: linkUrl,
+            snippet: title,
+            publishedAt: null,
+            matchedKeywords: keywordsForSearch(title, keyword),
+            raw: { keyword, category, sourceUrl: url },
+          })
+        })
+        if (raw.length === 0) {
+          for (const link of extractLinks(html, url, 60)) {
+            if (seen.has(link.url)) continue
+            seen.add(link.url)
+            raw.push({
+              externalId: hashId(link.url),
+              title: link.title,
+              url: link.url,
+              snippet: link.snippet,
+              publishedAt: null,
+              matchedKeywords: keywordsForSearch(link.title, keyword),
+              raw: { keyword, category, sourceUrl: url },
+            })
+          }
+        }
+      } catch (err) {
+        console.warn(`[jmty] skip ${keyword}/${category}:`, err.message)
+      }
+    }
+  }
+  return raw
+}
+
+export async function scrapeMaipureMie(keywords = MONITOR_KEYWORDS) {
+  const { MAIPURE_MIE_BASE } = await import('./config.mjs')
+  const seen = new Set()
+  const raw = []
+  for (const keyword of keywords) {
+    const url = `${MAIPURE_MIE_BASE}/search?keyword=${encodeURIComponent(keyword)}`
+    try {
+      const html = await fetchText(url)
+      const $ = cheerio.load(html)
+      $('a[href]').each((_, el) => {
+        const title = $(el).text().replace(/\s+/g, ' ').trim()
+        const href = $(el).attr('href')
+        if (!title || !href || title.length < 6) return
+        if (!href.startsWith('/') && !href.includes('mypl.net')) return
+        const linkUrl = new URL(href, MAIPURE_MIE_BASE).toString()
+        if (!linkUrl.includes('mypl.net')) return
+        if (seen.has(linkUrl)) return
+        seen.add(linkUrl)
+        raw.push({
+          externalId: hashId(linkUrl),
+          title,
+          url: linkUrl,
+          snippet: title,
+          publishedAt: null,
+          matchedKeywords: keywordsForSearch(title, keyword),
+          raw: { keyword, sourceUrl: url },
+        })
+      })
+    } catch (err) {
+      console.warn(`[maipure_mie] skip ${keyword}:`, err.message)
+    }
+  }
+  if (raw.length === 0) {
+    try {
+      const html = await fetchText(MAIPURE_MIE_BASE)
+      for (const link of extractLinks(html, MAIPURE_MIE_BASE, 80)) {
+        if (seen.has(link.url)) continue
+        seen.add(link.url)
+        raw.push({
+          externalId: hashId(link.url),
+          title: link.title,
+          url: link.url,
+          snippet: link.snippet,
+          publishedAt: null,
+          raw: { sourceUrl: MAIPURE_MIE_BASE },
+        })
+      }
+    } catch (err) {
+      console.warn('[maipure_mie] skip top page:', err.message)
+    }
+  }
+  return raw
+}
+
+export async function scrapeEventbank(keywords = MONITOR_KEYWORDS) {
+  const seen = new Set()
+  const raw = []
+  for (const keyword of keywords) {
+    const googleQuery = encodeURIComponent(`site:eventbank.jp OR site:press.eventbank.jp ${keyword}`)
+    const url = `https://www.google.com/search?q=${googleQuery}&hl=ja`
+    try {
+      const html = await fetchText(url)
+      const $ = cheerio.load(html)
+      $('a[href*="eventbank"]').each((_, el) => {
+        const href = $(el).attr('href')
+        if (!href) return
+        let linkUrl = href
+        if (href.startsWith('/url?q=')) {
+          try {
+            linkUrl = new URL(href, 'https://www.google.com').searchParams.get('q') ?? href
+          } catch {
+            return
+          }
+        }
+        if (!linkUrl.includes('eventbank')) return
+        const block = $(el).closest('div').parent()
+        const title =
+          block.find('h3').first().text().trim() ||
+          $(el).text().replace(/\s+/g, ' ').trim()
+        if (!title || title.length < 6) return
+        if (seen.has(linkUrl)) return
+        seen.add(linkUrl)
+        raw.push({
+          externalId: hashId(linkUrl),
+          title,
+          url: linkUrl,
+          snippet: title,
+          publishedAt: null,
+          matchedKeywords: keywordsForSearch(title, keyword),
+          raw: { keyword, sourceUrl: url, via: 'google' },
+        })
+      })
+    } catch (err) {
+      console.warn(`[eventbank] skip ${keyword}:`, err.message)
+    }
+  }
+  return raw
+}
+
+export async function scrapeMichinoeki(pages) {
+  const { MICHINOEKI_PAGES } = await import('./config.mjs')
+  const targetPages = pages ?? MICHINOEKI_PAGES
+  const seen = new Set()
+  const raw = []
+  for (const page of targetPages) {
+    for (const url of page.urls ?? [page.url]) {
+      if (!url) continue
+      try {
+        const html = await fetchText(url)
+        const $ = cheerio.load(html)
+        $('a[href]').each((_, el) => {
+          const title = $(el).text().replace(/\s+/g, ' ').trim()
+          const href = $(el).attr('href')
+          if (!title || !href || title.length < 4) return
+          let linkUrl
+          try {
+            linkUrl = new URL(href, url).toString()
+          } catch {
+            return
+          }
+          if (seen.has(linkUrl)) return
+          seen.add(linkUrl)
+          raw.push({
+            externalId: hashId(linkUrl),
+            title: `[${page.name}] ${title}`,
+            url: linkUrl,
+            snippet: title,
+            publishedAt: null,
+            matchedKeywords: matchKeywords(title),
+            raw: { page: page.name, sourceUrl: url },
+          })
+        })
+      } catch (err) {
+        console.warn(`[michinoeki] skip ${page.name}:`, err.message)
+      }
     }
   }
   return raw

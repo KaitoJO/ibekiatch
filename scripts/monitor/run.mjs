@@ -7,14 +7,15 @@ import {
   SNS_KEYWORDS,
 } from './config.mjs'
 import {
-  extractLinks,
-  fetchText,
   getAdminSupabase,
   googleNewsRssUrl,
-  hashId,
   kokuchizRssUrl,
   parseRssFeed,
   runFacebookSource,
+  scrapeEventbank,
+  scrapeJmty,
+  scrapeMaipureMie,
+  scrapeMichinoeki,
   scrapeSearchPages,
   scrapeStaticPages,
   toMonitorItems,
@@ -52,51 +53,47 @@ const REGULAR_JOBS = [
     }
     return all
   }],
-  ['jmty', async () =>
-    scrapeSearchPages('jmty', 'https://jmty.jp/articles?q={keyword}', MONITOR_KEYWORDS)],
-  ['eventbank', async () =>
-    scrapeSearchPages(
-      'eventbank',
-      'https://www.eventbank.jp/events?q={keyword}',
-      MONITOR_KEYWORDS,
-    )],
+  ['jmty', async () => scrapeJmty(MONITOR_KEYWORDS)],
+  ['eventbank', async () => scrapeEventbank(MONITOR_KEYWORDS)],
   ['mie_cities', async () => scrapeStaticPages('mie_cities', MIE_CITY_PAGES)],
   ['shokokai', async () => scrapeStaticPages('shokokai', SHOKOKAI_PAGES)],
-  ['michinoeki', async () => scrapeStaticPages('michinoeki', MICHINOEKI_PAGES)],
-  ['maipure_mie', async () => {
-    const html = await fetchText('https://www.mie.maipure.com')
-    return extractLinks(html, 'https://www.mie.maipure.com', 100).map((link) => ({
-      externalId: hashId(link.url),
-      title: link.title,
-      url: link.url,
-      snippet: link.snippet,
-      publishedAt: null,
-      raw: { source: 'maipure' },
-    }))
-  }],
+  ['michinoeki', async () => scrapeMichinoeki(MICHINOEKI_PAGES)],
+  ['maipure_mie', async () => scrapeMaipureMie(MONITOR_KEYWORDS)],
   ['facebook', runFacebookSource],
 ]
 
-async function runSource(sourceId, fn, keywordList = MONITOR_KEYWORDS) {
-  const supabase = getAdminSupabase()
+async function runSource(sourceId, fn, keywordList = MONITOR_KEYWORDS, dryRun = false) {
   try {
     const raw = await fn()
     if (raw?.skipped) {
-      await updateSourceRun(supabase, sourceId, 'skipped', raw.reason)
+      if (!dryRun) {
+        const supabase = getAdminSupabase()
+        await updateSourceRun(supabase, sourceId, 'skipped', raw.reason)
+      }
       return { sourceId, hits: 0, skipped: true, reason: raw.reason }
     }
     const hits = toMonitorItems(sourceId, raw, keywordList)
-    await upsertHits(supabase, hits)
-    await updateSourceRun(supabase, sourceId, 'ok')
+    if (!dryRun) {
+      const supabase = getAdminSupabase()
+      await upsertHits(supabase, hits)
+      await updateSourceRun(supabase, sourceId, 'ok')
+    }
     return { sourceId, hits: hits.length }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
-    await updateSourceRun(supabase, sourceId, 'error', msg)
+    if (!dryRun) {
+      try {
+        const supabase = getAdminSupabase()
+        await updateSourceRun(supabase, sourceId, 'error', msg)
+      } catch {
+        // ignore status update failure in dry-run fallback
+      }
+    }
     return { sourceId, hits: 0, error: msg }
   }
 }
 
-async function runPlaywrightSources(sourceIds, logger = console) {
+async function runPlaywrightSources(sourceIds, logger = console, dryRun = false) {
   const results = []
   const batch = await runAllPlaywrightSocialSources(sourceIds)
 
@@ -109,13 +106,13 @@ async function runPlaywrightSources(sourceIds, logger = console) {
       const result = await runSource(sourceId, async () => ({
         skipped: true,
         reason: entry.reason,
-      }), SNS_KEYWORDS)
+      }), SNS_KEYWORDS, dryRun)
       results.push(result)
       logger.log?.(`  skip: ${entry.reason}`)
       continue
     }
 
-    const result = await runSource(sourceId, async () => entry.items, SNS_KEYWORDS)
+    const result = await runSource(sourceId, async () => entry.items, SNS_KEYWORDS, dryRun)
     results.push(result)
     if (result.error) {
       logger.error?.(`  ✗ ${result.error}`)
@@ -128,10 +125,10 @@ async function runPlaywrightSources(sourceIds, logger = console) {
 }
 
 /**
- * @param {{ sources?: string[] | null, logger?: Pick<Console, 'log' | 'error' | 'warn'> }} [options]
+ * @param {{ sources?: string[] | null, logger?: Pick<Console, 'log' | 'error' | 'warn'>, dryRun?: boolean }} [options]
  */
 export async function runMonitor(options = {}) {
-  const { sources = null, logger = console } = options
+  const { sources = null, logger = console, dryRun = false } = options
   const runAll = !sources || sources.length === 0
 
   const regularPending = REGULAR_JOBS.filter(([id]) => runAll || sources.includes(id))
@@ -143,10 +140,14 @@ export async function runMonitor(options = {}) {
     `monitor: ${regularPending.length} 通常ソース + ${playwrightPending.length} SNS(Playwright)`,
   )
 
+  if (dryRun) {
+    logger.log?.('monitor: dry-run（Supabase への保存なし）')
+  }
+
   const regularResults = await Promise.all(
     regularPending.map(async ([id, fn]) => {
       logger.log?.(`▶ ${id}`)
-      const result = await runSource(id, fn)
+      const result = await runSource(id, fn, MONITOR_KEYWORDS, dryRun)
       if (result.skipped) {
         logger.log?.(`  skip: ${result.reason}`)
       } else if (result.error) {
@@ -160,7 +161,7 @@ export async function runMonitor(options = {}) {
 
   const playwrightResults =
     playwrightPending.length > 0
-      ? await runPlaywrightSources(playwrightPending, logger)
+      ? await runPlaywrightSources(playwrightPending, logger, dryRun)
       : []
 
   const results = [...regularResults, ...playwrightResults]
