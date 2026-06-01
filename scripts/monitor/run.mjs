@@ -1,7 +1,14 @@
 import {
+  AEON_MALL_PAGES,
+  JA_MIE_PAGES,
+  KITCHEN_CAR_PORTAL_PAGES,
   MICHINOEKI_PAGES,
   MIE_CITY_PAGES,
+  MIE_FM_PAGES,
+  MIE_NEWS_PAGES,
+  MIE_TOURISM_PAGES,
   MONITOR_KEYWORDS,
+  OUTLET_MALL_PAGES,
   PLAYWRIGHT_SOCIAL_SOURCES,
   SHOKOKAI_PAGES,
   SNS_KEYWORDS,
@@ -59,6 +66,15 @@ const REGULAR_JOBS = [
   ['shokokai', async () => scrapeStaticPages('shokokai', SHOKOKAI_PAGES)],
   ['michinoeki', async () => scrapeMichinoeki(MICHINOEKI_PAGES)],
   ['maipure_mie', async () => scrapeMaipureMie(MONITOR_KEYWORDS)],
+  ['mellow_shopstop', async () => scrapeStaticPages('mellow_shopstop', [KITCHEN_CAR_PORTAL_PAGES[0]])],
+  ['mobimaru', async () => scrapeStaticPages('mobimaru', [KITCHEN_CAR_PORTAL_PAGES[1]])],
+  ['kitchencar_madoguchi', async () => scrapeStaticPages('kitchencar_madoguchi', [KITCHEN_CAR_PORTAL_PAGES[2]])],
+  ['aeon_mall', async () => scrapeStaticPages('aeon_mall', AEON_MALL_PAGES)],
+  ['outlet_mall', async () => scrapeStaticPages('outlet_mall', OUTLET_MALL_PAGES)],
+  ['mie_tourism', async () => scrapeStaticPages('mie_tourism', MIE_TOURISM_PAGES)],
+  ['mie_news', async () => scrapeStaticPages('mie_news', MIE_NEWS_PAGES)],
+  ['mie_fm', async () => scrapeStaticPages('mie_fm', MIE_FM_PAGES)],
+  ['ja_mie', async () => scrapeStaticPages('ja_mie', JA_MIE_PAGES)],
 ]
 
 async function runSource(sourceId, fn, keywordList = MONITOR_KEYWORDS, dryRun = false) {

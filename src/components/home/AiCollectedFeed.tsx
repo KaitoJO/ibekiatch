@@ -15,6 +15,16 @@ const SOURCE_LABELS: Record<string, string> = {
   michinoeki: '道の駅',
   eventbank: 'イベントバンク',
   maipure_mie: 'まいぷれ三重',
+  mellow_shopstop: 'MELLOW SHOP STOP',
+  mobimaru: 'Mobimaru',
+  kitchencar_madoguchi: 'キッチンカーの窓口',
+  aeon_mall: 'イオンモール',
+  outlet_mall: 'アウトレット',
+  mie_tourism: '観光協会',
+  mie_news: '新聞',
+  mie_fm: '三重FM',
+  ja_mie: 'JA三重',
+  facebook: 'Facebook',
 }
 
 type Props = {
@@ -34,7 +44,7 @@ export function AiCollectedFeed({ hits, limit, onUpgrade }: Props) {
           <Sparkles size={18} className="ai-feed__icon" />
           <div>
             <h2 className="ai-feed__title">AI収集の新着</h2>
-            <p className="ai-feed__sub">12ソースから1時間ごとに自動収集中</p>
+            <p className="ai-feed__sub">21ソースから1時間ごとに自動収集中</p>
           </div>
         </div>
         <p className="ai-feed__empty-text">新着情報が入るとここに表示されます。</p>
@@ -48,7 +58,7 @@ export function AiCollectedFeed({ hits, limit, onUpgrade }: Props) {
         <Sparkles size={18} className="ai-feed__icon" />
         <div>
           <h2 className="ai-feed__title">AI収集の新着</h2>
-          <p className="ai-feed__sub">{hits.length}件 · 12ソースから自動収集</p>
+          <p className="ai-feed__sub">{hits.length}件 · 21ソースから自動収集</p>
         </div>
       </div>
 
@@ -73,7 +83,7 @@ export function AiCollectedFeed({ hits, limit, onUpgrade }: Props) {
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                詳細を見る
+                元サイトを見る
                 <ExternalLink size={14} />
               </a>
             )}

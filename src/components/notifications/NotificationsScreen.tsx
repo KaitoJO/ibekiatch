@@ -1,3 +1,4 @@
+import { ExternalLink } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { formatDateTime } from '../../lib/recruitmentUtils'
 import { ScreenHeader } from '../shared/ScreenHeader'
@@ -19,6 +20,13 @@ export function NotificationsScreen() {
     markAllNotificationsRead,
     workspaceLoading,
   } = useAuth()
+
+  const openNotification = (n: (typeof notifications)[number]) => {
+    if (!n.isRead) void markNotificationRead(n.id)
+    if (n.actionUrl) {
+      window.open(n.actionUrl, '_blank', 'noopener,noreferrer')
+    }
+  }
 
   return (
     <div className="notifications-screen screen">
@@ -47,9 +55,7 @@ export function NotificationsScreen() {
                 <button
                   type="button"
                   className={`notification-item${n.isRead ? '' : ' notification-item--unread'}`}
-                  onClick={() => {
-                    if (!n.isRead) void markNotificationRead(n.id)
-                  }}
+                  onClick={() => openNotification(n)}
                 >
                   <span className="notification-item__icon" aria-hidden>
                     {TYPE_ICON[n.type] ?? '🔔'}
@@ -57,6 +63,12 @@ export function NotificationsScreen() {
                   <div className="notification-item__content">
                     <div className="notification-item__title">{n.title}</div>
                     <div className="notification-item__body">{n.body}</div>
+                    {n.actionUrl && (
+                      <span className="notification-item__link">
+                        募集元サイトを開く
+                        <ExternalLink size={12} />
+                      </span>
+                    )}
                     <div className="notification-item__time">{formatDateTime(n.createdAt)}</div>
                   </div>
                   {!n.isRead && <span className="notification-item__dot" aria-hidden />}

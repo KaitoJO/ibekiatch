@@ -1,4 +1,4 @@
-import { MapPin } from 'lucide-react'
+import { ExternalLink, MapPin } from 'lucide-react'
 import { formatDate, formatFee } from '../../lib/recruitmentUtils'
 import type { Recruitment } from '../../types'
 
@@ -86,19 +86,33 @@ export function RecruitmentCard({
               {isFull ? ' — 満枠' : ''}
             </div>
           </div>
-          <button
-            type="button"
-            className="recruitment-card__cta"
-            disabled={applyBusy || applied || isFull}
-            onClick={(e) => {
-              e.stopPropagation()
-              if (isFull || applied) onOpen?.()
-              else onApply?.()
-            }}
-            style={applied ? { opacity: 0.75 } : undefined}
-          >
-            {ctaLabel}
-          </button>
+          <div className="recruitment-card__actions">
+            {recruitment.sourceUrl && (
+              <a
+                className="recruitment-card__source-link"
+                href={recruitment.sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+              >
+                元サイトを見る
+                <ExternalLink size={14} />
+              </a>
+            )}
+            <button
+              type="button"
+              className="recruitment-card__cta"
+              disabled={applyBusy || applied || isFull}
+              onClick={(e) => {
+                e.stopPropagation()
+                if (isFull || applied) onOpen?.()
+                else onApply?.()
+              }}
+              style={applied ? { opacity: 0.75 } : undefined}
+            >
+              {ctaLabel}
+            </button>
+          </div>
         </div>
       </div>
     </article>

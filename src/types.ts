@@ -26,6 +26,7 @@ export type Recruitment = {
   isUrgent: boolean
   imageGradient: string
   description: string
+  sourceUrl: string | null
 }
 
 export type ApplicationRecord = {
@@ -33,6 +34,7 @@ export type ApplicationRecord = {
   recruitmentId: string
   status: 'pending' | 'accepted' | 'rejected'
   createdAt: string
+  confirmedAt: string | null
 }
 
 export type CalendarEvent = {
@@ -53,6 +55,7 @@ export type NotificationRecord = {
   title: string
   body: string
   relatedId: string | null
+  actionUrl: string | null
   isRead: boolean
   createdAt: string
 }
@@ -86,6 +89,8 @@ export type Profile = {
   businessName: string
   genre: string
   area: string
+  subscriptionPlan: 'free' | 'standard' | 'premium'
+  xAutoPost: boolean
 }
 
 export type ProfileForm = {
@@ -93,6 +98,7 @@ export type ProfileForm = {
   businessName: string
   genre: string
   area: string
+  xAutoPost?: boolean
 }
 
 export type CommunityPostForm = {

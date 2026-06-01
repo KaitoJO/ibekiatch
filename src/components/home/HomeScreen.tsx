@@ -24,11 +24,14 @@ export function HomeScreen({ onNavigateTab }: Props) {
     appliedRecruitmentIds,
     monitorHits,
     applyToRecruitment,
+    confirmShop,
     workspaceLoading,
     workspaceError,
     refreshWorkspace,
     unreadNotificationCount,
   } = useAuth()
+
+  const [confirmBusyId, setConfirmBusyId] = useState<string | null>(null)
 
   const [area, setArea] = useState('すべて')
   const [genre, setGenre] = useState('すべて')
@@ -80,14 +83,36 @@ export function HomeScreen({ onNavigateTab }: Props) {
     }
   }
 
+  const detailApplication = detailId
+    ? applications.find((a) => a.recruitmentId === detailId) ?? null
+    : null
+
+  const handleConfirmShop = async (applicationId: string) => {
+    setApplyError(null)
+    setConfirmBusyId(applicationId)
+    try {
+      await confirmShop(applicationId)
+    } catch (err) {
+      setApplyError(formatError(err))
+    } finally {
+      setConfirmBusyId(null)
+    }
+  }
+
   if (detailRecruitment) {
     return (
       <RecruitmentDetailScreen
         recruitment={detailRecruitment}
         applied={appliedRecruitmentIds.has(detailRecruitment.id)}
         applyBusy={applyBusyId === detailRecruitment.id}
+        confirmBusy={detailApplication ? confirmBusyId === detailApplication.id : false}
         onBack={() => setDetailId(null)}
         onApply={() => void handleApply(detailRecruitment.id)}
+        onConfirmShop={
+          detailApplication?.status === 'pending'
+            ? () => void handleConfirmShop(detailApplication.id)
+            : undefined
+        }
       />
     )
   }
@@ -99,7 +124,7 @@ export function HomeScreen({ onNavigateTab }: Props) {
           <div>
             <p className="home-header__greeting">{APP_NAME} · {REGION_LABEL}</p>
             <h1 className="home-header__title">{APP_TAGLINE}</h1>
-            <p className="home-header__tagline">AIが12ソースから出店募集を自動収集</p>
+            <p className="home-header__tagline">AIが21ソースから出店募集を自動収集</p>
           </div>
           <div className="home-header__actions">
             <button
@@ -294,6 +319,12 @@ export function HomeScreen({ onNavigateTab }: Props) {
               ))}
             </section>
           </>
+        ) : recruitments.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-state__icon">🔍</div>
+            <p className="empty-state__title">現在募集情報を収集中です</p>
+            <p>AIが21ソースから三重県の出店募集を自動収集しています。新着は上の「AI収集の新着」に表示されます。</p>
+          </div>
         ) : (
           <div className="empty-state">
             <div className="empty-state__icon">🚚</div>

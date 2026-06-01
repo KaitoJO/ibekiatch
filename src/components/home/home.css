@@ -370,11 +370,35 @@
 
 .recruitment-card__footer {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
   gap: 12px;
   margin-top: auto;
   padding-top: 4px;
+}
+
+.recruitment-card__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.recruitment-card__source-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-primary);
+  text-decoration: none;
+  padding: 10px 12px;
+  border-radius: var(--radius-full);
+  border: 1.5px solid var(--color-primary-light);
+  background: #fff7ed;
+}
+
+.recruitment-card__source-link:active {
+  opacity: 0.85;
 }
 
 .recruitment-card__applicants {
@@ -586,4 +610,24 @@
 
 .detail-cta {
   margin-top: 8px;
+}
+
+.detail-source-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border-radius: var(--radius-full);
+  background: #fff7ed;
+  border: 1.5px solid #fdba74;
+  color: var(--color-primary);
+  font-weight: 700;
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.detail-cta--confirm {
+  margin-top: 10px;
+  background: linear-gradient(135deg, #15803d, #166534);
 }

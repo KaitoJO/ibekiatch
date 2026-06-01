@@ -59,6 +59,16 @@
   line-height: 1.5;
 }
 
+.notification-item__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
 .notification-item__time {
   font-size: 11px;
   color: var(--color-text-muted);

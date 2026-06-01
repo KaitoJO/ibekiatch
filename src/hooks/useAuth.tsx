@@ -8,7 +8,8 @@ import {
   type ReactNode,
 } from 'react'
 import type { Session, SupabaseClient } from '@supabase/supabase-js'
-import { buildCalendarEvents, fetchWorkspace, insertApplication, insertCommunityNotification, insertCommunityPost, insertCommunityReview, markAllNotificationsRead, markNotificationRead, upsertProfile, type ProfileForm } from '../lib/workspaceDb'
+import { buildCalendarEvents, confirmShopApplication, fetchWorkspace, insertApplication, insertCommunityNotification, insertCommunityPost, insertCommunityReview, markAllNotificationsRead, markNotificationRead, upsertProfile, type ProfileForm } from '../lib/workspaceDb'
+import { buildShopConfirmedPost, openXPostIntent } from '../lib/xPost'
 import { getSupabase } from '../lib/supabaseClient'
 import { formatError } from '../lib/formatError'
 import type { ApplicationRecord, CalendarEvent, CommunityPost, CommunityPostForm, CommunityReview, CommunityReviewForm, MonitorHit, NotificationRecord, Profile, Recruitment } from '../types'
@@ -32,6 +33,7 @@ type AuthContextValue = {
   authorName: string
   refreshWorkspace: () => Promise<void>
   applyToRecruitment: (recruitmentId: string) => Promise<void>
+  confirmShop: (applicationId: string) => Promise<void>
   saveProfile: (form: ProfileForm) => Promise<void>
   markNotificationRead: (id: string) => Promise<void>
   markAllNotificationsRead: () => Promise<void>
@@ -142,6 +144,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [supabase, session?.user?.id, refreshWorkspace],
   )
 
+  const confirmShop = useCallback(
+    async (applicationId: string) => {
+      if (!supabase || !session?.user?.id) return
+      const app = applications.find((a) => a.id === applicationId)
+      const recruitment = app ? recruitments.find((r) => r.id === app.recruitmentId) : null
+      await confirmShopApplication(supabase, session.user.id, applicationId)
+      if (
+        profile?.subscriptionPlan === 'premium' &&
+        profile?.xAutoPost &&
+        recruitment
+      ) {
+        openXPostIntent(
+          buildShopConfirmedPost({
+            title: recruitment.title,
+            venue: recruitment.venue,
+            date: recruitment.date,
+            area: recruitment.area,
+          }),
+        )
+      }
+      await refreshWorkspace()
+    },
+    [supabase, session?.user?.id, applications, recruitments, profile, refreshWorkspace],
+  )
+
   const saveProfile = useCallback(
     async (form: ProfileForm) => {
       if (!supabase || !session?.user?.id) return
@@ -239,6 +266,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     authorName,
     refreshWorkspace,
     applyToRecruitment,
+    confirmShop,
     saveProfile,
     markNotificationRead: handleMarkNotificationRead,
     markAllNotificationsRead: handleMarkAllNotificationsRead,

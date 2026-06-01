@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Share2 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import {
   dateKey,
@@ -14,10 +15,19 @@ import './calendar.css'
 
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土']
 
+function buildShareText(events: { title: string; venue: string; date: string; timeSlot: string }[]): string {
+  if (events.length === 0) return ''
+  const lines = events.map(
+    (e) => `・${formatDate(e.date)} ${e.title}（${e.venue} / ${e.timeSlot}）`,
+  )
+  return `🚚 イベキャッチ 出店予定\n${lines.join('\n')}`
+}
+
 export function CalendarScreen() {
   const { calendarEvents } = useAuth()
   const [yearMonth, setYearMonth] = useState(() => toYearMonth(new Date()))
   const [selectedDay, setSelectedDay] = useState<number | null>(new Date().getDate())
+  const [shareMessage, setShareMessage] = useState<string | null>(null)
 
   const days = useMemo(() => getCalendarDays(yearMonth), [yearMonth])
   const eventDates = useMemo(() => {
@@ -39,6 +49,22 @@ export function CalendarScreen() {
     d.setMonth(d.getMonth() + delta)
     setYearMonth(toYearMonth(d))
     setSelectedDay(null)
+    setShareMessage(null)
+  }
+
+  const shareSchedule = async () => {
+    const text = buildShareText(dayEvents)
+    if (!text) return
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: '出店予定', text })
+        return
+      }
+      await navigator.clipboard.writeText(text)
+      setShareMessage('予定をクリップボードにコピーしました')
+    } catch {
+      setShareMessage('共有をキャンセルしました')
+    }
   }
 
   const [y, m] = yearMonth.split('-').map(Number)
@@ -83,7 +109,10 @@ export function CalendarScreen() {
               key={key}
               type="button"
               className={`calendar-day${hasEvent ? ' calendar-day--has-event' : ''}${isToday ? ' calendar-day--today' : ''}${isSelected ? ' calendar-day--selected' : ''}`}
-              onClick={() => setSelectedDay(day)}
+              onClick={() => {
+                setSelectedDay(day)
+                setShareMessage(null)
+              }}
             >
               {day}
               {hasEvent && <span className="calendar-day__dot" />}
@@ -93,15 +122,25 @@ export function CalendarScreen() {
       </div>
 
       <section className="calendar-events">
-        <h2 className="calendar-events__title">
-          {selectedDay != null ? `${m}/${selectedDay} の出店予定` : '日付を選択'}
-        </h2>
+        <div className="calendar-events__head">
+          <h2 className="calendar-events__title">
+            {selectedDay != null ? `${m}/${selectedDay} の出店予定` : '日付を選択'}
+          </h2>
+          {dayEvents.length > 0 && (
+            <button type="button" className="calendar-share-btn" onClick={() => void shareSchedule()}>
+              <Share2 size={16} />
+              シェア
+            </button>
+          )}
+        </div>
+
+        {shareMessage && <p className="calendar-share-msg">{shareMessage}</p>}
 
         {dayEvents.length === 0 ? (
           <div className="empty-block">
             <div className="empty-block__icon">📅</div>
             <p className="empty-block__title">予定がありません</p>
-            <p>ホームから募集に応募すると、出店日がここに表示されます。</p>
+            <p>応募後「出店確定」を押すと、確定した出店日がここに表示されます。</p>
           </div>
         ) : (
           dayEvents.map((event) => (
@@ -115,9 +154,7 @@ export function CalendarScreen() {
                 出店日: {formatDate(event.date)}
               </p>
               <div className="calendar-event-card__footer">
-                <span className={`status-badge status-badge--${event.status}`}>
-                  {event.status === 'pending' ? '審査中' : event.status === 'accepted' ? '承認' : '不採用'}
-                </span>
+                <span className="status-badge status-badge--accepted">出店確定</span>
                 <span className="calendar-event-card__fee">{formatFee(event.fee, true)}</span>
               </div>
             </article>

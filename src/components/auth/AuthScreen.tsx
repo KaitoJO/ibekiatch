@@ -77,6 +77,11 @@ export function AuthScreen({ supabase }: Props) {
               'メールアドレスが未確認です。確認メール内のリンクを開いてからログインしてください。',
             )
           }
+          if (/invalid login credentials/i.test(error.message)) {
+            throw new Error(
+              'メールアドレスまたはパスワードが正しくありません。未登録の場合は「新規登録」から作成してください。',
+            )
+          }
           throw error
         }
       }

@@ -11,11 +11,21 @@ export const MONITOR_SOURCES = [
   'X',
   'Instagram',
   'Threads',
+  'Facebook',
   '市町村HP',
   '商工会HP',
   '道の駅HP',
   'イベントバンク',
   'まいぷれ三重',
+  'MELLOW SHOP STOP',
+  'Mobimaru',
+  'キッチンカーの窓口',
+  'イオンモール',
+  'アウトレット',
+  '観光協会',
+  '新聞',
+  '三重FM',
+  'JA三重',
 ] as const
 
 export const SUBSCRIPTION_PLANS = [
@@ -39,7 +49,7 @@ export const SUBSCRIPTION_PLANS = [
     name: 'プレミアム',
     price: 2980,
     priceLabel: '¥2,980/月',
-    features: ['スタンダードの全機能', '優先通知', '応募サポート', '主催者への直接問い合わせ'],
+    features: ['スタンダードの全機能', '優先通知', '応募サポート', '出店確定時のX自動投稿'],
   },
 ] as const
 

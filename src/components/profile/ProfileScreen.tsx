@@ -9,7 +9,7 @@ import './profile.css'
 
 const STATUS_LABEL = {
   pending: '審査中',
-  accepted: '承認',
+  accepted: '出店確定',
   rejected: '不採用',
 } as const
 
@@ -20,6 +20,7 @@ export function ProfileScreen() {
     applications,
     recruitments,
     saveProfile,
+    confirmShop,
     signOut,
     workspaceLoading,
   } = useAuth()
@@ -28,7 +29,9 @@ export function ProfileScreen() {
   const [businessName, setBusinessName] = useState('')
   const [genre, setGenre] = useState('')
   const [area, setArea] = useState('')
+  const [xAutoPost, setXAutoPost] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [confirmBusyId, setConfirmBusyId] = useState<string | null>(null)
   const [message, setMessage] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
 
   useEffect(() => {
@@ -36,6 +39,7 @@ export function ProfileScreen() {
     setBusinessName(profile?.businessName ?? '')
     setGenre(profile?.genre ?? '')
     setArea(profile?.area ?? '')
+    setXAutoPost(profile?.xAutoPost ?? false)
   }, [profile])
 
   const recruitmentMap = new Map(recruitments.map((r) => [r.id, r]))
@@ -45,7 +49,7 @@ export function ProfileScreen() {
     setMessage(null)
     setBusy(true)
     try {
-      await saveProfile({ displayName, businessName, genre, area })
+      await saveProfile({ displayName, businessName, genre, area, xAutoPost })
       setMessage({ type: 'ok', text: 'プロフィールを保存しました。' })
     } catch (err) {
       setMessage({
@@ -169,6 +173,17 @@ export function ProfileScreen() {
               </select>
             </div>
 
+            {profile?.subscriptionPlan === 'premium' && (
+              <label className="profile-checkbox">
+                <input
+                  type="checkbox"
+                  checked={xAutoPost}
+                  onChange={(e) => setXAutoPost(e.target.checked)}
+                />
+                出店確定時にXへ自動投稿（プレミアム）
+              </label>
+            )}
+
             {message && (
               <div className={`alert alert--${message.type === 'ok' ? 'success' : 'error'}`}>
                 {message.text}
@@ -204,6 +219,19 @@ export function ProfileScreen() {
                     <span className={`status-badge status-badge--${app.status}`}>
                       {STATUS_LABEL[app.status]}
                     </span>
+                    {app.status === 'pending' && (
+                      <button
+                        type="button"
+                        className="profile-confirm-btn"
+                        disabled={confirmBusyId === app.id}
+                        onClick={() => {
+                          setConfirmBusyId(app.id)
+                          void confirmShop(app.id).finally(() => setConfirmBusyId(null))
+                        }}
+                      >
+                        {confirmBusyId === app.id ? '…' : '出店確定'}
+                      </button>
+                    )}
                   </div>
                 )
               })}

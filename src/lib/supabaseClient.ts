@@ -25,6 +25,13 @@ export function getSupabaseConfig(): { url: string; key: string } | null {
     )
     return null
   }
+  if (key.startsWith('sb_publishable_')) {
+    console.error(
+      '[ibekiatch] VITE_SUPABASE_ANON_KEY は JWT 形式の anon キー（eyJ...）が必要です。',
+      'Supabase Dashboard → Project Settings → API → anon public',
+    )
+    return null
+  }
   return { url, key }
 }
 

@@ -26,6 +26,7 @@ type RecruitmentRow = {
   is_urgent: boolean
   image_gradient: string
   description: string | null
+  source_url: string | null
   created_at: string
   applications?: { count: number }[]
 }
@@ -37,6 +38,8 @@ type ProfileRow = {
   business_name: string | null
   genre: string | null
   area: string | null
+  subscription_plan?: string | null
+  x_auto_post?: boolean | null
 }
 
 function isTodayInJst(iso: string): boolean {
@@ -66,16 +69,21 @@ function recruitmentFromRow(row: RecruitmentRow): Recruitment {
     isUrgent: row.is_urgent,
     imageGradient: row.image_gradient,
     description: row.description ?? '',
+    sourceUrl: row.source_url ?? null,
   }
 }
 
 function profileFromRow(row: ProfileRow): Profile {
+  const plan = row.subscription_plan
   return {
     id: row.id,
     displayName: row.display_name ?? '',
     businessName: row.business_name ?? '',
     genre: row.genre ?? '',
     area: row.area ?? '',
+    subscriptionPlan:
+      plan === 'standard' || plan === 'premium' ? plan : 'free',
+    xAutoPost: Boolean(row.x_auto_post),
   }
 }
 
@@ -102,7 +110,7 @@ export async function fetchWorkspace(
         .order('created_at', { ascending: false }),
       supabase
         .from('applications')
-        .select('id, recruitment_id, status, created_at')
+        .select('id, recruitment_id, status, created_at, confirmed_at')
         .eq('user_id', userId)
         .order('created_at', { ascending: false }),
       supabase.from('profiles').select('*').eq('user_id', userId).maybeSingle(),
@@ -169,6 +177,7 @@ export async function fetchWorkspace(
       recruitmentId: row.recruitment_id,
       status: row.status as ApplicationRecord['status'],
       createdAt: row.created_at,
+      confirmedAt: row.confirmed_at ?? null,
     })),
     profile: profileRes.data ? profileFromRow(profileRes.data as ProfileRow) : null,
     notifications: (notificationsRes.error ? [] : (notificationsRes.data ?? [])).map((n) => ({
@@ -177,6 +186,7 @@ export async function fetchWorkspace(
       title: n.title,
       body: n.body ?? '',
       relatedId: n.related_id,
+      actionUrl: n.action_url ?? null,
       isRead: n.is_read,
       createdAt: n.created_at,
     })),
@@ -201,6 +211,7 @@ export function buildCalendarEvents(
 ): CalendarEvent[] {
   const recruitmentMap = new Map(recruitments.map((r) => [r.id, r]))
   return applications
+    .filter((app) => app.status === 'accepted')
     .map((app) => {
       const r = recruitmentMap.get(app.recruitmentId)
       if (!r) return null
@@ -234,6 +245,7 @@ export async function upsertProfile(
         business_name: form.businessName.trim(),
         genre: form.genre.trim(),
         area: form.area.trim(),
+        x_auto_post: form.xAutoPost ?? false,
         updated_at: new Date().toISOString(),
       },
       { onConflict: 'user_id' },
@@ -255,6 +267,23 @@ export async function insertApplication(
     recruitment_id: recruitmentId,
     status: 'pending',
   })
+  if (error) throw error
+}
+
+export async function confirmShopApplication(
+  supabase: SupabaseClient,
+  userId: string,
+  applicationId: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('applications')
+    .update({
+      status: 'accepted',
+      confirmed_at: new Date().toISOString(),
+    })
+    .eq('id', applicationId)
+    .eq('user_id', userId)
+    .eq('status', 'pending')
   if (error) throw error
 }
 

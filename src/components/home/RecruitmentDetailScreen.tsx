@@ -1,4 +1,4 @@
-import { MapPin } from 'lucide-react'
+import { ExternalLink, MapPin } from 'lucide-react'
 import { formatDate, formatFee } from '../../lib/recruitmentUtils'
 import { ScreenHeader } from '../shared/ScreenHeader'
 import type { Recruitment } from '../../types'
@@ -9,16 +9,20 @@ type Props = {
   recruitment: Recruitment
   applied: boolean
   applyBusy: boolean
+  confirmBusy?: boolean
   onBack: () => void
   onApply: () => void
+  onConfirmShop?: () => void
 }
 
 export function RecruitmentDetailScreen({
   recruitment,
   applied,
   applyBusy,
+  confirmBusy = false,
   onBack,
   onApply,
+  onConfirmShop,
 }: Props) {
   const isFull = recruitment.applicants >= recruitment.maxApplicants
   const progress =
@@ -88,6 +92,18 @@ export function RecruitmentDetailScreen({
           </p>
         </section>
 
+        {recruitment.sourceUrl && (
+          <a
+            className="detail-source-link"
+            href={recruitment.sourceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            元サイトを見る
+            <ExternalLink size={16} />
+          </a>
+        )}
+
         <section className="detail-section">
           <h3 className="detail-section__label">応募状況</h3>
           <div className="recruitment-card__progress">
@@ -110,6 +126,17 @@ export function RecruitmentDetailScreen({
         >
           {ctaLabel}
         </button>
+
+        {applied && onConfirmShop && (
+          <button
+            type="button"
+            className="primary-btn detail-cta detail-cta--confirm"
+            disabled={confirmBusy}
+            onClick={onConfirmShop}
+          >
+            {confirmBusy ? '処理中…' : '出店確定'}
+          </button>
+        )}
       </div>
     </div>
   )
