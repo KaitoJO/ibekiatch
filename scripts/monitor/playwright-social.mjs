@@ -15,7 +15,7 @@ export async function launchBrowser() {
     return chromium.launch({
       args: chromiumPkg.default.args,
       executablePath: await chromiumPkg.default.executablePath(),
-      headless: chromiumPkg.default.headless ?? true,
+      headless: true,
     })
   }
 
