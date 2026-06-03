@@ -21,6 +21,8 @@
 
 こくちーず · Peatix · Googleニュース · ジモティー · 市町村HP · 商工会HP · 道の駅HP · イベントバンク · まいぷれ三重
 
+→ [Stripe 課金セットアップ](docs/STRIPE_SETUP.md)（スタンダード / プレミアム）
+
 → [cron-job.org](https://cron-job.org) から `/api/cron/monitor` を1時間ごとに実行（[セットアップ](docs/MONITOR_SETUP.md)）
 
 ### コミュニティ

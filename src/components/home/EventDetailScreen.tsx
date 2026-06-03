@@ -1,0 +1,188 @@
+import { ExternalLink, MapPin, Sparkles } from 'lucide-react'
+import { formatDate } from '../../lib/recruitmentUtils'
+import { ScreenHeader } from '../shared/ScreenHeader'
+import type { DisplayEvent } from '../../types'
+import '../shared/shared.css'
+import './home.css'
+
+const SOURCE_LABELS: Record<string, string> = {
+  kokuchiz: 'こくちーず',
+  peatix: 'Peatix',
+  twitter: 'X',
+  instagram: 'Instagram',
+  facebook: 'Facebook',
+  mie_cities: '市役所HP',
+  shokokai: '商工会',
+  michinoeki: '道の駅',
+  eventbank: 'イベントバンク',
+  mie_tourism: '観光協会',
+  ja_mie: 'JA三重',
+}
+
+type Props = {
+  event: DisplayEvent
+  applied: boolean
+  applyBusy: boolean
+  confirmBusy?: boolean
+  onBack: () => void
+  onApply: () => void
+  onConfirmShop?: () => void
+}
+
+export function EventDetailScreen({
+  event,
+  applied,
+  applyBusy,
+  confirmBusy = false,
+  onBack,
+  onApply,
+  onConfirmShop,
+}: Props) {
+  const isHost = event.origin === 'host'
+  const isFull = isHost && event.maxApplicants > 0 && event.applicants >= event.maxApplicants
+  const progress =
+    isHost && event.maxApplicants > 0 ? (event.applicants / event.maxApplicants) * 100 : 0
+  const sourceLabel = event.sourceId ? SOURCE_LABELS[event.sourceId] ?? event.sourceId : null
+  const externalUrl = event.applicationUrl || event.sourceUrl
+
+  const ctaLabel = applyBusy
+    ? '送信中…'
+    : applied
+      ? '応募済み'
+      : isFull
+        ? '満枠'
+        : isHost
+          ? '応募する'
+          : '応募ページを開く'
+
+  const handleCta = () => {
+    if (isHost) {
+      if (!applied && !isFull) onApply()
+      return
+    }
+    if (externalUrl) window.open(externalUrl, '_blank', 'noopener,noreferrer')
+  }
+
+  return (
+    <div className="screen detail-screen">
+      <ScreenHeader title="募集詳細" onBack={onBack} gradient />
+
+      <div className="detail-hero" style={{ background: event.imageGradient }}>
+        <div className="recruitment-card__badges">
+          {event.isNew && (
+            <span className="recruitment-card__badge recruitment-card__badge--new">本日の新着</span>
+          )}
+          {event.isUrgent && (
+            <span className="recruitment-card__badge recruitment-card__badge--urgent">急募</span>
+          )}
+          {!isHost && (
+            <span className="recruitment-card__badge recruitment-card__badge--ai">
+              <Sparkles size={10} style={{ marginRight: 2, verticalAlign: -1 }} />
+              AI収集{sourceLabel ? ` · ${sourceLabel}` : ''}
+            </span>
+          )}
+        </div>
+        <h2 className="detail-hero__title">{event.title}</h2>
+        <p className="detail-hero__genre">{event.category || event.area}</p>
+      </div>
+
+      <div className="detail-body">
+        {event.organizer && (
+          <section className="detail-section">
+            <h3 className="detail-section__label">主催</h3>
+            <p className="detail-section__text">{event.organizer}</p>
+          </section>
+        )}
+
+        <section className="detail-section">
+          <h3 className="detail-section__label">会場・場所</h3>
+          <p className="detail-section__text">
+            <MapPin size={16} style={{ verticalAlign: -3, marginRight: 4 }} />
+            {event.location}
+            <br />
+            <strong>{event.area}</strong>
+          </p>
+        </section>
+
+        <div className="detail-grid">
+          <div className="detail-grid__item">
+            <div className="detail-grid__label">出店日</div>
+            <div className="detail-grid__value">
+              {event.eventDate ? formatDate(event.eventDate) : '要確認'}
+            </div>
+          </div>
+          <div className="detail-grid__item">
+            <div className="detail-grid__label">{isHost ? '時間' : '募集締切'}</div>
+            <div className="detail-grid__value">
+              {isHost
+                ? event.timeSlot || '—'
+                : event.recruitEnd
+                  ? formatDate(event.recruitEnd)
+                  : '—'}
+            </div>
+          </div>
+        </div>
+
+        <section className="detail-section">
+          <h3 className="detail-section__label">出店料</h3>
+          <p className="detail-fee">{event.feeLabel}</p>
+        </section>
+
+        <section className="detail-section">
+          <h3 className="detail-section__label">募集概要</h3>
+          <p className="detail-section__text">
+            {event.description || '詳細は主催者または元サイトをご確認ください。'}
+          </p>
+        </section>
+
+        {externalUrl && (
+          <a
+            className="detail-source-link"
+            href={externalUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {isHost ? '元サイトを見る' : '応募・詳細ページを開く'}
+            <ExternalLink size={16} />
+          </a>
+        )}
+
+        {isHost && (
+          <section className="detail-section">
+            <h3 className="detail-section__label">応募状況</h3>
+            <div className="recruitment-card__progress">
+              <div
+                className="recruitment-card__progress-fill"
+                style={{ width: `${Math.min(progress, 100)}%` }}
+              />
+            </div>
+            <p className="detail-section__sub">
+              {event.applicants} / {event.maxApplicants} 枠
+              {isFull ? ' — 満枠' : ''}
+            </p>
+          </section>
+        )}
+
+        <button
+          type="button"
+          className="primary-btn detail-cta"
+          disabled={applyBusy || (isHost && (applied || isFull)) || (!isHost && !externalUrl)}
+          onClick={handleCta}
+        >
+          {ctaLabel}
+        </button>
+
+        {isHost && applied && onConfirmShop && (
+          <button
+            type="button"
+            className="primary-btn detail-cta detail-cta--confirm"
+            disabled={confirmBusy}
+            onClick={onConfirmShop}
+          >
+            {confirmBusy ? '処理中…' : '出店確定'}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}

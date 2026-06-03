@@ -1,5 +1,12 @@
-import { DEFAULT_UA, SNS_KEYWORDS } from './config.mjs'
+import { DEFAULT_UA, MONITOR_KEYWORDS, SNS_KEYWORDS } from './config.mjs'
 import { hashId, matchKeywords, scrapeDdgSiteFetch, scrapeGoogleNewsSite, scrapeGoogleSiteFetch } from './lib.mjs'
+import {
+  cleanSocialText,
+  isAcceptableMonitorTitle,
+  isAcceptableMonitorUrl,
+  normalizeExternalUrl,
+  sanitizeMonitorItem,
+} from './urlUtils.mjs'
 
 const PAGE_TIMEOUT_MS = 25_000
 const SCROLL_PAUSE_MS = 800
@@ -49,8 +56,13 @@ function normalizeText(text) {
 }
 
 function itemFromPost({ platform, keyword, text, url, publishedAt = null, raw = {} }) {
-  const body = normalizeText(text)
+  const body = cleanSocialText(text, platform)
   if (!body || body.length < 8) return null
+  if (!isAcceptableMonitorTitle(body)) return null
+
+  const normalizedUrl = normalizeExternalUrl(url)
+  if (!normalizedUrl || !isAcceptableMonitorUrl(normalizedUrl)) return null
+
   const fromText = matchKeywords(body, SNS_KEYWORDS)
   const fromQuery = SNS_KEYWORDS.filter(
     (k) => k === keyword || body.toLowerCase().includes(k.toLowerCase()),
@@ -58,9 +70,9 @@ function itemFromPost({ platform, keyword, text, url, publishedAt = null, raw = 
   const matchedKeywords = [...new Set([...fromText, ...fromQuery, ...(SNS_KEYWORDS.includes(keyword) ? [keyword] : [])])]
   if (matchedKeywords.length === 0) return null
   return {
-    externalId: hashId(`${platform}:${url || body.slice(0, 120)}`),
+    externalId: hashId(`${platform}:${normalizedUrl || body.slice(0, 120)}`),
     title: body.slice(0, 200),
-    url,
+    url: normalizedUrl,
     snippet: body.slice(0, 1000),
     publishedAt,
     matchedKeywords: matchedKeywords,
@@ -108,9 +120,10 @@ async function scrapeGoogleSiteSearch(page, keyword, { siteQuery, urlPattern, pl
         seen.add(href)
         const block = a.closest('[data-sokoban-container], div.g, div[data-hveid], li, div')
         const h3 = block?.querySelector('h3')
-        const text = (h3?.textContent || block?.textContent || a.textContent || '')
+        let text = (h3?.textContent || block?.textContent || a.textContent || '')
           .replace(/\s+/g, ' ')
           .trim()
+        text = cleanSocialText(text, platform)
         if (text.length > 10) out.push({ text, url: href, publishedAt: null })
       })
       return out.slice(0, 20)
@@ -289,8 +302,8 @@ async function scrapeThreads(page, keyword) {
   if (loginWall) {
     const googleItems = await searchFallbackForSocial(page, keyword, {
       siteQuery: (k) => `site:threads.net ${k}`,
-      urlPattern: /threads\.net\/.*\/post\//,
-      ddgPattern: /threads\.net\//,
+      urlPattern: /threads\.net\/(t\/|[\w.-]+\/post\/)/,
+      ddgPattern: /threads\.net\/(t\/|[\w.-]+\/post\/)/,
       platform: 'threads',
       linkIncludes: ['threads.net'],
     })
@@ -303,22 +316,18 @@ async function scrapeThreads(page, keyword) {
 
   const posts = await page.evaluate(() => {
     const out = []
-    const links = document.querySelectorAll('a[href*="/post/"]')
+    const links = document.querySelectorAll('a[href*="/post/"], a[href*="/t/"]')
     links.forEach((a) => {
       const href = a.getAttribute('href')
+      if (!href || href.includes('/embed')) return
       const postUrl = href ? new URL(href, 'https://www.threads.net').toString() : null
-      const container = a.closest('div[dir="auto"]')?.parentElement ?? a.closest('article') ?? a
-      const text = container?.textContent?.replace(/\s+/g, ' ').trim() ?? ''
-      if (text.length > 12) out.push({ text, url: postUrl })
+      const container = a.closest('article') ?? a.closest('[data-pressable-container="true"]') ?? a
+      let text = container?.textContent?.replace(/\s+/g, ' ').trim() ?? ''
+      text = text.replace(/^Threads\s+/i, '').replace(/\s+Threads\s*$/i, '').trim()
+      if (text.length > 12 && !/^threads(\s+threads)+$/i.test(text)) {
+        out.push({ text, url: postUrl })
+      }
     })
-    if (out.length === 0) {
-      document.querySelectorAll('[data-pressable-container="true"]').forEach((el) => {
-        const text = el.textContent?.replace(/\s+/g, ' ').trim() ?? ''
-        const link = el.querySelector('a[href*="/post/"]')?.getAttribute('href')
-        const postUrl = link ? new URL(link, 'https://www.threads.net').toString() : null
-        if (text.length > 12) out.push({ text, url: postUrl })
-      })
-    }
     return out.slice(0, 20)
   })
 
@@ -329,8 +338,8 @@ async function scrapeThreads(page, keyword) {
   if (items.length === 0) {
     const googleItems = await searchFallbackForSocial(page, keyword, {
       siteQuery: (k) => `site:threads.net ${k}`,
-      urlPattern: /threads\.net\/.*\/post\//,
-      ddgPattern: /threads\.net\//,
+      urlPattern: /threads\.net\/(t\/|[\w.-]+\/post\/)/,
+      ddgPattern: /threads\.net\/(t\/|[\w.-]+\/post\/)/,
       platform: 'threads',
       linkIncludes: ['threads.net'],
     })
@@ -357,6 +366,60 @@ const SCRAPERS = {
   instagram: scrapeInstagram,
   threads: scrapeThreads,
   facebook: scrapeFacebook,
+}
+
+export async function scrapeEventbankPlaywright(keywords = MONITOR_KEYWORDS) {
+  return withBrowser(async (page) => {
+    const all = []
+    for (const keyword of keywords) {
+      try {
+        const siteQuery = `site:eventbank.jp OR site:press.eventbank.jp ${keyword}`
+        const googleUrl = `https://www.google.com/search?q=${encodeURIComponent(siteQuery)}&hl=ja&num=20`
+        await page.goto(googleUrl, { waitUntil: 'domcontentloaded', timeout: PAGE_TIMEOUT_MS })
+        await page.waitForTimeout(2000)
+        const googleHits = await page.evaluate(() => {
+          const out = []
+          const seen = new Set()
+          document.querySelectorAll('#search a[href], #rso a[href], div.g a[href], a[href]').forEach((a) => {
+            let href = a.href || ''
+            if (!href || href.includes('google.com/search') || href.includes('accounts.google')) return
+            href = href.split('&')[0].split('#')[0]
+            if (!/eventbank\.jp/i.test(href)) return
+            if (seen.has(href)) return
+            seen.add(href)
+            const block = a.closest('[data-sokoban-container], div.g, div[data-hveid], li, div')
+            const h3 = block?.querySelector('h3')
+            const text = (h3?.textContent || block?.textContent || a.textContent || '')
+              .replace(/\s+/g, ' ')
+              .trim()
+            if (text.length > 10) out.push({ text, url: href, publishedAt: null })
+          })
+          return out.slice(0, 20)
+        })
+
+        for (const hit of googleHits) {
+          const sanitized = sanitizeMonitorItem({
+            externalId: hashId(hit.url),
+            title: hit.text,
+            url: hit.url,
+            snippet: hit.text,
+            publishedAt: hit.publishedAt,
+            raw: { keyword, via: 'google-playwright' },
+          })
+          if (!sanitized) continue
+          const matched = matchKeywords(`${sanitized.title}\n${sanitized.snippet}`, keywords)
+          if (matched.length === 0) continue
+          all.push({
+            ...sanitized,
+            matchedKeywords: matched,
+          })
+        }
+      } catch (err) {
+        console.warn(`[eventbank] skip "${keyword}":`, err instanceof Error ? err.message : err)
+      }
+    }
+    return dedupeItems(all)
+  })
 }
 
 export async function runPlaywrightSocialSource(sourceId) {
@@ -388,7 +451,7 @@ export async function runPlaywrightSocialSource(sourceId) {
   })
 }
 
-export async function runAllPlaywrightSocialSources(sourceIds = ['twitter', 'instagram', 'threads']) {
+export async function runAllPlaywrightSocialSources(sourceIds = ['twitter', 'instagram']) {
   return withBrowser(async (page) => {
     const results = {}
     for (const sourceId of sourceIds) {

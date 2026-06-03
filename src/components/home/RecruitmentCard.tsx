@@ -31,48 +31,53 @@ export function RecruitmentCard({
         ? '詳細'
         : '応募する'
 
+  const handleCta = () => {
+    if (isFull || applied) onOpen?.()
+    else onApply?.()
+  }
+
   return (
-    <article className="recruitment-card" onClick={onOpen} role="button" tabIndex={0}>
-      <div className="recruitment-card__hero" style={{ background: recruitment.imageGradient }}>
-        <div className="recruitment-card__badges">
-          {recruitment.isNew && (
-            <span className="recruitment-card__badge recruitment-card__badge--new">本日の新着</span>
-          )}
-          {recruitment.isUrgent && (
-            <span className="recruitment-card__badge recruitment-card__badge--urgent">急募</span>
-          )}
-        </div>
-        <span className="recruitment-card__genre">{recruitment.genre}</span>
-      </div>
-
-      <div className="recruitment-card__body">
-        <h3 className="recruitment-card__title">{recruitment.title}</h3>
-        <p className="recruitment-card__venue">
-          <MapPin size={14} strokeWidth={2.5} style={{ flexShrink: 0, marginTop: 2 }} />
-          <span>
-            {recruitment.venue}
-            <br />
-            <strong>{recruitment.area}</strong>
-          </span>
-        </p>
-
-        <div className="recruitment-card__meta">
-          <div className="recruitment-card__meta-item">
-            <div className="recruitment-card__meta-label">出店日</div>
-            <div className="recruitment-card__meta-value">{formatDate(recruitment.date)}</div>
+    <article className="recruitment-card">
+      <button type="button" className="recruitment-card__main" onClick={onOpen}>
+        <div className="recruitment-card__hero" style={{ background: recruitment.imageGradient }}>
+          <div className="recruitment-card__badges">
+            {recruitment.isNew && (
+              <span className="recruitment-card__badge recruitment-card__badge--new">本日の新着</span>
+            )}
+            {recruitment.isUrgent && (
+              <span className="recruitment-card__badge recruitment-card__badge--urgent">急募</span>
+            )}
           </div>
-          <div className="recruitment-card__meta-item">
-            <div className="recruitment-card__meta-label">時間</div>
-            <div className="recruitment-card__meta-value">{recruitment.timeSlot}</div>
+          <span className="recruitment-card__genre">{recruitment.area}</span>
+        </div>
+
+        <div className="recruitment-card__body">
+          <h3 className="recruitment-card__title">{recruitment.title}</h3>
+          <p className="recruitment-card__venue">
+            <MapPin size={14} strokeWidth={2.5} style={{ flexShrink: 0, marginTop: 2 }} />
+            <span>
+              {recruitment.venue}
+              <br />
+              <strong>{recruitment.area}</strong>
+            </span>
+          </p>
+
+          <div className="recruitment-card__meta">
+            <div className="recruitment-card__meta-item">
+              <div className="recruitment-card__meta-label">出店日</div>
+              <div className="recruitment-card__meta-value">{formatDate(recruitment.date)}</div>
+            </div>
+            <div className="recruitment-card__meta-item">
+              <div className="recruitment-card__meta-label">時間</div>
+              <div className="recruitment-card__meta-value">{recruitment.timeSlot}</div>
+            </div>
           </div>
-        </div>
 
-        <div className="recruitment-card__meta-item" style={{ gridColumn: '1 / -1' }}>
-          <div className="recruitment-card__meta-label">出店料（税込）</div>
-          <div className="recruitment-card__fee">{formatFee(recruitment.fee)}</div>
-        </div>
+          <div className="recruitment-card__meta-item" style={{ gridColumn: '1 / -1' }}>
+            <div className="recruitment-card__meta-label">出店料（税込）</div>
+            <div className="recruitment-card__fee">{formatFee(recruitment.fee)}</div>
+          </div>
 
-        <div className="recruitment-card__footer">
           <div className="recruitment-card__applicants">
             <div className="recruitment-card__applicants-label">応募状況</div>
             <div className="recruitment-card__progress">
@@ -86,33 +91,31 @@ export function RecruitmentCard({
               {isFull ? ' — 満枠' : ''}
             </div>
           </div>
-          <div className="recruitment-card__actions">
-            {recruitment.sourceUrl && (
-              <a
-                className="recruitment-card__source-link"
-                href={recruitment.sourceUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-              >
-                元サイトを見る
-                <ExternalLink size={14} />
-              </a>
-            )}
-            <button
-              type="button"
-              className="recruitment-card__cta"
-              disabled={applyBusy || applied || isFull}
-              onClick={(e) => {
-                e.stopPropagation()
-                if (isFull || applied) onOpen?.()
-                else onApply?.()
-              }}
-              style={applied ? { opacity: 0.75 } : undefined}
+        </div>
+      </button>
+
+      <div className="recruitment-card__footer">
+        <div className="recruitment-card__actions">
+          {recruitment.sourceUrl && (
+            <a
+              className="recruitment-card__source-link"
+              href={recruitment.sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
             >
-              {ctaLabel}
-            </button>
-          </div>
+              元サイトを見る
+              <ExternalLink size={14} />
+            </a>
+          )}
+          <button
+            type="button"
+            className="recruitment-card__cta"
+            disabled={applyBusy || applied || isFull}
+            onClick={handleCta}
+            style={applied ? { opacity: 0.75 } : undefined}
+          >
+            {ctaLabel}
+          </button>
         </div>
       </div>
     </article>

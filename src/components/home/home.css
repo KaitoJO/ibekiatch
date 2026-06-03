@@ -51,8 +51,7 @@
   width: 40px;
   height: 40px;
   border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.2);
-  backdrop-filter: blur(8px);
+  background: rgba(255, 255, 255, 0.28);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -106,8 +105,7 @@
 }
 
 .home-stat {
-  background: rgba(255, 255, 255, 0.18);
-  backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.22);
   border-radius: var(--radius-md);
   padding: 12px 10px;
   text-align: center;
@@ -155,7 +153,7 @@
   gap: 8px;
   overflow-x: auto;
   padding-bottom: 4px;
-  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
   scrollbar-width: none;
 }
 
@@ -176,8 +174,13 @@
   background: var(--color-bg);
   color: var(--color-text-secondary);
   border: 1.5px solid transparent;
-  transition: all 0.2s ease;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
   white-space: nowrap;
+  min-height: 44px;
+}
+
+.filter-chip:active {
+  opacity: 0.85;
 }
 
 .filter-chip--active {
@@ -220,56 +223,41 @@
   font-weight: 700;
 }
 
-/* ===== Card carousel ===== */
-.card-carousel {
-  display: flex;
-  gap: 14px;
-  overflow-x: auto;
-  scroll-snap-type: x mandatory;
-  -webkit-overflow-scrolling: touch;
-  padding: 4px 2px 20px;
-  margin: 0 -2px;
-  scrollbar-width: none;
-}
-
-.card-carousel::-webkit-scrollbar {
-  display: none;
-}
-
-.carousel-dots {
-  display: flex;
-  justify-content: center;
-  gap: 6px;
-  margin-top: -8px;
-  margin-bottom: 24px;
-}
-
-.carousel-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--color-border);
-  transition: all 0.25s ease;
-}
-
-.carousel-dot--active {
-  width: 20px;
-  border-radius: var(--radius-full);
-  background: var(--color-primary);
+/* ===== Card grid ===== */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  padding: 12px;
 }
 
 /* ===== Recruitment card ===== */
 .recruitment-card {
-  flex: 0 0 calc(100% - 32px);
-  max-width: calc(100% - 32px);
-  scroll-snap-align: center;
+  min-width: 0;
   background: var(--color-surface);
   border-radius: var(--radius-xl);
   overflow: hidden;
   box-shadow: var(--shadow-lg);
   display: flex;
   flex-direction: column;
+}
+
+.recruitment-card__main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  width: 100%;
+  text-align: left;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
   cursor: pointer;
+  touch-action: manipulation;
+}
+
+.recruitment-card__main:active {
+  opacity: 0.92;
 }
 
 .recruitment-card__hero {
@@ -292,8 +280,7 @@
   font-weight: 700;
   padding: 4px 10px;
   border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.25);
-  backdrop-filter: blur(4px);
+  background: rgba(255, 255, 255, 0.3);
   color: white;
 }
 
@@ -304,6 +291,11 @@
 .recruitment-card__badge--new {
   background: rgba(255, 255, 255, 0.95);
   color: var(--color-primary);
+}
+
+.recruitment-card__badge--ai {
+  background: rgba(99, 102, 241, 0.92);
+  color: white;
 }
 
 .recruitment-card__genre {
@@ -372,8 +364,8 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  margin-top: auto;
-  padding-top: 4px;
+  padding: 0 20px 20px;
+  touch-action: manipulation;
 }
 
 .recruitment-card__actions {
@@ -442,11 +434,11 @@
   font-weight: 700;
   border-radius: var(--radius-full);
   box-shadow: var(--shadow-md);
-  transition: transform 0.15s ease;
+  min-height: 44px;
 }
 
-.recruitment-card__cta:active {
-  transform: scale(0.97);
+.recruitment-card__cta:active:not(:disabled) {
+  opacity: 0.85;
 }
 
 /* ===== List ===== */
@@ -465,11 +457,11 @@
   align-items: center;
   text-align: left;
   width: 100%;
-  transition: transform 0.15s ease;
+  min-height: 44px;
 }
 
 .recruitment-list-item:active {
-  transform: scale(0.99);
+  opacity: 0.85;
 }
 
 .recruitment-list-item__thumb {

@@ -34,7 +34,7 @@ export const SUBSCRIPTION_PLANS = [
     name: '無料',
     price: 0,
     priceLabel: '¥0',
-    features: ['新着3件まで閲覧', 'コミュニティ閲覧'],
+    features: ['新着8件まで閲覧', 'コミュニティ閲覧'],
   },
   {
     id: 'standard',
@@ -53,4 +53,7 @@ export const SUBSCRIPTION_PLANS = [
   },
 ] as const
 
-export const REGION_LABEL = '三重県から全国展開'
+export const REGION_LABEL = '東海地方'
+
+/** 無料プランでホームに表示する AI 収集件数 */
+export const FREE_AI_HIT_LIMIT = 8

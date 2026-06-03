@@ -16,6 +16,11 @@
   padding: 16px;
   margin-bottom: 12px;
   box-shadow: var(--shadow-sm);
+  min-height: 44px;
+}
+
+.community-post-card:active {
+  opacity: 0.85;
 }
 
 .community-post-card--expanded {

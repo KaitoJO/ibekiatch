@@ -11,7 +11,7 @@ export const MONITOR_KEYWORDS = [
   'フード出店',
 ]
 
-/** SNS（X / Instagram / Threads）監視キーワード */
+/** SNS（X / Instagram）監視キーワード — Threads は除外 */
 export const SNS_KEYWORDS = [
   'キッチンカー募集',
   '出店者募集',
@@ -22,7 +22,8 @@ export const SNS_KEYWORDS = [
   'マルシェ 募集',
 ]
 
-export const PLAYWRIGHT_SOCIAL_SOURCES = ['twitter', 'instagram', 'threads', 'facebook']
+/** Playwright で監視する SNS（Threads / Facebook はノイズ・ログイン壁のため除外） */
+export const PLAYWRIGHT_SOCIAL_SOURCES = ['twitter', 'instagram']
 
 /** 三重県 市町村公式（イベント・お知らせページを直接監視） */
 export const MIE_CITY_PAGES = [
@@ -98,6 +99,35 @@ export const MICHINOEKI_PAGES = [
   { name: '三重県観光イベント', url: 'https://www.kankomie.or.jp/event/' },
 ]
 
+/** ジモティー: 東海4県 × 募集キーワード */
+export const JMTY_KEYWORDS = [
+  'キッチンカー',
+  '移動販売',
+  'フードトラック',
+  '出店募集',
+  'マルシェ',
+  '露天',
+  '出店者募集',
+]
+
+/** ジモティー検索 — 東海4県のみ */
+export const JMTY_TOKAI_PREFECTURES = [
+  { slug: 'mie', label: '三重' },
+  { slug: 'aichi', label: '愛知' },
+  { slug: 'shizuoka', label: '静岡' },
+  { slug: 'gifu', label: '岐阜' },
+]
+
+export function jmtySearchUrl(keyword, category, prefectureSlug = 'mie') {
+  const params = new URLSearchParams({
+    keyword,
+    prefecture_name: prefectureSlug,
+    category_group: category,
+  })
+  return `https://jmty.jp/${prefectureSlug}/search?${params.toString()}`
+}
+
+/** @deprecated jmtySearchUrl を使用 */
 export const JMty_SEARCH_BASE =
   'https://jmty.jp/mie/search?keyword={keyword}&prefecture_name=mie&category_group={category}'
 

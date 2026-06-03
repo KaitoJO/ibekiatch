@@ -7,6 +7,9 @@
     "api/cron/monitor.js": {
       "maxDuration": 300,
       "memory": 1024
+    },
+    "api/stripe/webhook.js": {
+      "maxDuration": 30
     }
   }
 }

@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
-import { AREAS, GENRES } from '../../data/mockRecruitments'
+import { AREAS } from '../../data/mockRecruitments'
+import { hasPaidAccess, planRank, startCheckout, openBillingPortal, syncBillingFromStripe } from '../../lib/billing'
 import { SUBSCRIPTION_PLANS } from '../../lib/brand'
+import { formatError } from '../../lib/formatError'
 import { useAuth } from '../../hooks/useAuth'
 import { formatDateTime, formatFee } from '../../lib/recruitmentUtils'
 import { ScreenHeader } from '../shared/ScreenHeader'
@@ -23,33 +25,59 @@ export function ProfileScreen() {
     confirmShop,
     signOut,
     workspaceLoading,
+    refreshWorkspace,
+    authDisabled,
   } = useAuth()
 
   const [displayName, setDisplayName] = useState('')
   const [businessName, setBusinessName] = useState('')
-  const [genre, setGenre] = useState('')
   const [area, setArea] = useState('')
   const [xAutoPost, setXAutoPost] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [billingBusy, setBillingBusy] = useState<string | null>(null)
   const [confirmBusyId, setConfirmBusyId] = useState<string | null>(null)
   const [message, setMessage] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
 
   useEffect(() => {
     setDisplayName(profile?.displayName ?? '')
     setBusinessName(profile?.businessName ?? '')
-    setGenre(profile?.genre ?? '')
     setArea(profile?.area ?? '')
     setXAutoPost(profile?.xAutoPost ?? false)
   }, [profile])
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('checkout') === 'success') {
+      setMessage({ type: 'ok', text: 'お支払いが完了しました。プランを反映しています…' })
+      void (async () => {
+        try {
+          if (session?.access_token) {
+            await syncBillingFromStripe(session.access_token)
+          }
+        } catch {
+          // Webhook 反映を待つ — refreshWorkspace で再取得
+        }
+        await refreshWorkspace()
+        setMessage({ type: 'ok', text: 'お支払いが完了しました。プランが反映されました。' })
+      })()
+      window.history.replaceState(null, '', `${window.location.pathname}?tab=profile`)
+    } else if (params.get('checkout') === 'cancel') {
+      setMessage({ type: 'err', text: 'お支払いはキャンセルされました。' })
+      window.history.replaceState(null, '', `${window.location.pathname}?tab=profile`)
+    }
+  }, [refreshWorkspace, session?.access_token])
+
   const recruitmentMap = new Map(recruitments.map((r) => [r.id, r]))
+  const currentPlan = profile?.subscriptionPlan ?? 'free'
+  const paid = hasPaidAccess(profile)
+  const accessToken = session?.access_token
 
   const onSave = async (e: React.FormEvent) => {
     e.preventDefault()
     setMessage(null)
     setBusy(true)
     try {
-      await saveProfile({ displayName, businessName, genre, area, xAutoPost })
+      await saveProfile({ displayName, businessName, genre: profile?.genre ?? '', area, xAutoPost })
       setMessage({ type: 'ok', text: 'プロフィールを保存しました。' })
     } catch (err) {
       setMessage({
@@ -58,6 +86,32 @@ export function ProfileScreen() {
       })
     } finally {
       setBusy(false)
+    }
+  }
+
+  const onSelectPlan = async (planId: 'standard' | 'premium') => {
+    if (!accessToken) return
+    setMessage(null)
+    setBillingBusy(planId)
+    try {
+      const url = await startCheckout(accessToken, planId)
+      window.location.href = url
+    } catch (err) {
+      setMessage({ type: 'err', text: formatError(err) })
+      setBillingBusy(null)
+    }
+  }
+
+  const onManageBilling = async () => {
+    if (!accessToken) return
+    setMessage(null)
+    setBillingBusy('portal')
+    try {
+      const url = await openBillingPortal(accessToken)
+      window.location.href = url
+    } catch (err) {
+      setMessage({ type: 'err', text: formatError(err) })
+      setBillingBusy(null)
     }
   }
 
@@ -93,32 +147,76 @@ export function ProfileScreen() {
           <p className="profile-plan-intro">
             キッチンカー・移動販売・露天営業者向け。AI収集の全件表示はスタンダード以上。
           </p>
+          {paid && (
+            <p className="profile-plan-status">
+              現在: <strong>{SUBSCRIPTION_PLANS.find((p) => p.id === currentPlan)?.name ?? currentPlan}</strong>
+            </p>
+          )}
           <div className="profile-plans">
-            {SUBSCRIPTION_PLANS.map((plan) => (
-              <div
-                key={plan.id}
-                className={`profile-plan${'recommended' in plan && plan.recommended ? ' profile-plan--recommended' : ''}`}
-              >
-                {'recommended' in plan && plan.recommended && (
-                  <span className="profile-plan__badge">おすすめ</span>
-                )}
-                <div className="profile-plan__head">
-                  <h3 className="profile-plan__name">{plan.name}</h3>
-                  <p className="profile-plan__price">{plan.priceLabel}</p>
+            {SUBSCRIPTION_PLANS.map((plan) => {
+              const isCurrent = plan.id === currentPlan && (plan.id === 'free' || paid)
+              const canCheckout =
+                plan.id !== 'free' &&
+                accessToken &&
+                (!paid || planRank(plan.id) > planRank(currentPlan))
+
+              return (
+                <div
+                  key={plan.id}
+                  className={`profile-plan${'recommended' in plan && plan.recommended ? ' profile-plan--recommended' : ''}${isCurrent ? ' profile-plan--current' : ''}`}
+                >
+                  {'recommended' in plan && plan.recommended && (
+                    <span className="profile-plan__badge">おすすめ</span>
+                  )}
+                  {isCurrent && plan.id !== 'free' && (
+                    <span className="profile-plan__badge profile-plan__badge--current">利用中</span>
+                  )}
+                  <div className="profile-plan__head">
+                    <h3 className="profile-plan__name">{plan.name}</h3>
+                    <p className="profile-plan__price">{plan.priceLabel}</p>
+                  </div>
+                  <ul className="profile-plan__features">
+                    {plan.features.map((f) => (
+                      <li key={f}>{f}</li>
+                    ))}
+                  </ul>
+                  {plan.id === 'free' ? null : isCurrent ? (
+                    <button type="button" className="profile-plan__btn profile-plan__btn--current" disabled>
+                      現在のプラン
+                    </button>
+                  ) : canCheckout ? (
+                    <button
+                      type="button"
+                      className="profile-plan__btn"
+                      disabled={billingBusy !== null}
+                      onClick={() => void onSelectPlan(plan.id as 'standard' | 'premium')}
+                    >
+                      {billingBusy === plan.id ? 'Stripeへ…' : 'このプランにする'}
+                    </button>
+                  ) : paid ? (
+                    <button
+                      type="button"
+                      className="profile-plan__btn profile-plan__btn--secondary"
+                      disabled={billingBusy !== null}
+                      onClick={() => void onManageBilling()}
+                    >
+                      プラン変更
+                    </button>
+                  ) : null}
                 </div>
-                <ul className="profile-plan__features">
-                  {plan.features.map((f) => (
-                    <li key={f}>{f}</li>
-                  ))}
-                </ul>
-                {plan.id !== 'free' && (
-                  <button type="button" className="profile-plan__btn" disabled>
-                    準備中
-                  </button>
-                )}
-              </div>
-            ))}
+              )
+            })}
           </div>
+          {paid && (
+            <button
+              type="button"
+              className="profile-billing-portal"
+              disabled={billingBusy !== null}
+              onClick={() => void onManageBilling()}
+            >
+              {billingBusy === 'portal' ? '読み込み中…' : 'お支払い・解約の管理（Stripe）'}
+            </button>
+          )}
         </section>
 
         <section className="profile-card">
@@ -145,20 +243,6 @@ export function ProfileScreen() {
               />
             </div>
             <div className="form-field">
-              <label className="form-field__label" htmlFor="profile-genre">ジャンル</label>
-              <select
-                id="profile-genre"
-                className="form-field__select"
-                value={genre}
-                onChange={(e) => setGenre(e.target.value)}
-              >
-                <option value="">選択してください</option>
-                {GENRES.filter((g) => g !== 'すべて').map((g) => (
-                  <option key={g} value={g}>{g}</option>
-                ))}
-              </select>
-            </div>
-            <div className="form-field">
               <label className="form-field__label" htmlFor="profile-area">活動エリア</label>
               <select
                 id="profile-area"
@@ -173,7 +257,7 @@ export function ProfileScreen() {
               </select>
             </div>
 
-            {profile?.subscriptionPlan === 'premium' && (
+            {profile?.subscriptionPlan === 'premium' && paid && (
               <label className="profile-checkbox">
                 <input
                   type="checkbox"
@@ -239,9 +323,11 @@ export function ProfileScreen() {
           )}
         </section>
 
-        <button type="button" className="secondary-btn" onClick={() => void signOut()}>
-          ログアウト
-        </button>
+        {!authDisabled && (
+          <button type="button" className="secondary-btn" onClick={() => void signOut()}>
+            ログアウト
+          </button>
+        )}
       </div>
     </div>
   )

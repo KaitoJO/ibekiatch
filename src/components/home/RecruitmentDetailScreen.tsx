@@ -55,7 +55,7 @@ export function RecruitmentDetailScreen({
           )}
         </div>
         <h2 className="detail-hero__title">{recruitment.title}</h2>
-        <p className="detail-hero__genre">{recruitment.genre}</p>
+        <p className="detail-hero__genre">{recruitment.area}</p>
       </div>
 
       <div className="detail-body">

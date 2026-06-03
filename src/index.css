@@ -25,7 +25,7 @@
   --shadow-tab: 0 -4px 24px rgba(26, 29, 38, 0.08);
   --font-sans: 'Noto Sans JP', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --app-max-width: 430px;
-  --tab-bar-height: 72px;
+  --tab-bar-height: 80px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-top: env(safe-area-inset-top, 0px);
 }
@@ -41,6 +41,7 @@
 html {
   -webkit-text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;
+  height: 100%;
 }
 
 body {
@@ -48,14 +49,16 @@ body {
   background: #e8eaef;
   color: var(--color-text);
   line-height: 1.5;
-  min-height: 100dvh;
-  overflow-x: hidden;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
 }
 
 #root {
-  min-height: 100dvh;
+  height: 100%;
   display: flex;
   justify-content: center;
+  overflow: hidden;
 }
 
 button {
@@ -63,6 +66,12 @@ button {
   border: none;
   background: none;
   cursor: pointer;
+  color: inherit;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+a {
   color: inherit;
 }
 
@@ -74,57 +83,49 @@ button:focus-visible {
 .app-shell {
   width: 100%;
   max-width: var(--app-max-width);
-  min-height: 100dvh;
+  height: 100%;
+  height: 100dvh;
+  height: -webkit-fill-available;
   background: var(--color-bg);
   display: flex;
   flex-direction: column;
   position: relative;
   box-shadow: 0 0 60px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
 }
 
 .app-main {
-  flex: 1;
-  overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+  position: relative;
+}
+
+.tab-screen {
+  position: absolute;
+  inset: 0;
   overflow-x: hidden;
-  padding-bottom: calc(var(--tab-bar-height) + var(--safe-bottom) + 8px);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
 }
 
-.app-main::-webkit-scrollbar {
-  display: none;
-}
-
-.screen {
-  animation: fadeSlideIn 0.28s ease-out;
-}
-
-@keyframes fadeSlideIn {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 .tab-bar {
-  position: fixed;
-  bottom: 0;
-  left: 50%;
-  transform: translateX(-50%);
+  flex-shrink: 0;
   width: 100%;
-  max-width: var(--app-max-width);
-  height: calc(var(--tab-bar-height) + var(--safe-bottom));
+  min-height: calc(var(--tab-bar-height) + var(--safe-bottom));
   padding-bottom: var(--safe-bottom);
   background: var(--color-surface);
   border-top: 1px solid var(--color-border);
   box-shadow: var(--shadow-tab);
   display: flex;
-  align-items: flex-start;
+  align-items: stretch;
   justify-content: space-around;
-  z-index: 100;
+  touch-action: manipulation;
+  position: relative;
+  z-index: 10;
 }
 
 .tab-bar__item {
@@ -134,10 +135,24 @@ button:focus-visible {
   align-items: center;
   justify-content: center;
   gap: 4px;
-  padding: 10px 4px 8px;
+  padding: 8px 4px;
   color: var(--color-tab-inactive);
   transition: color 0.2s ease;
   position: relative;
+  min-height: 48px;
+  min-width: 48px;
+  -webkit-tap-highlight-color: rgba(255, 107, 53, 0.15);
+  touch-action: manipulation;
+  cursor: pointer;
+}
+
+.tab-bar__icon,
+.tab-bar__label {
+  pointer-events: none;
+}
+
+.tab-bar__item:active {
+  opacity: 0.7;
 }
 
 .tab-bar__item--active {
@@ -148,12 +163,14 @@ button:focus-visible {
   content: '';
   position: absolute;
   top: 0;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 0;
+  right: 0;
+  margin-inline: auto;
   width: 32px;
   height: 3px;
   background: var(--color-primary);
   border-radius: 0 0 4px 4px;
+  pointer-events: none;
 }
 
 .tab-bar__icon {
@@ -182,6 +199,7 @@ button:focus-visible {
   display: flex;
   align-items: center;
   justify-content: center;
+  pointer-events: none;
 }
 
 .placeholder-screen {

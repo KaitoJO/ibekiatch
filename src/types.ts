@@ -1,4 +1,53 @@
-export type TabId = 'home' | 'calendar' | 'notifications' | 'community' | 'profile'
+export type TabId = 'home' | 'calendar' | 'notifications' | 'profile'
+
+export type CollectedEvent = {
+  id: string
+  monitorHitId: string | null
+  recruitmentId: string | null
+  sourceId: string | null
+  origin: 'collected' | 'host'
+  title: string
+  organizer: string
+  location: string
+  area: string
+  eventDate: string | null
+  recruitStart: string | null
+  recruitEnd: string | null
+  fee: string
+  category: string
+  applicationUrl: string | null
+  sourceUrl: string | null
+  description: string
+  status: 'open' | 'closed'
+  confidence: number
+  createdAt: string
+}
+
+/** ホーム一覧用（主催者募集 + AI収集を統合） */
+export type DisplayEvent = {
+  id: string
+  title: string
+  organizer: string
+  location: string
+  area: string
+  eventDate: string | null
+  recruitEnd: string | null
+  feeLabel: string
+  category: string
+  applicationUrl: string | null
+  sourceUrl: string | null
+  sourceId: string | null
+  origin: 'collected' | 'host'
+  recruitmentId: string | null
+  description: string
+  isNew: boolean
+  isUrgent: boolean
+  imageGradient: string
+  applicants: number
+  maxApplicants: number
+  timeSlot: string
+  status: 'open' | 'closed'
+}
 
 export type MonitorHit = {
   id: string
@@ -60,6 +109,50 @@ export type NotificationRecord = {
   createdAt: string
 }
 
+export type EventReview = {
+  id: string
+  recruitmentId: string
+  userId: string
+  authorName: string
+  ratingSales: number
+  ratingTraffic: number
+  ratingOrganizer: number
+  body: string
+  tags: string[]
+  createdAt: string
+  eventTitle: string
+  eventArea: string
+  eventVenue: string
+}
+
+export type EventReviewForm = {
+  recruitmentId: string
+  ratingSales: number
+  ratingTraffic: number
+  ratingOrganizer: number
+  body: string
+  tags: string[]
+}
+
+export type EventReviewSummary = {
+  recruitmentId: string
+  count: number
+  avgSales: number
+  avgTraffic: number
+  avgOrganizer: number
+  avgOverall: number
+  topTags: string[]
+}
+
+export type EventChatMessage = {
+  id: string
+  recruitmentId: string
+  userId: string
+  authorName: string
+  body: string
+  createdAt: string
+}
+
 export type CommunityPost = {
   id: string
   userId: string
@@ -68,6 +161,8 @@ export type CommunityPost = {
   body: string
   area: string
   genre: string
+  region: string
+  recruitmentId: string | null
   createdAt: string
   reviewCount: number
   avgRating: number
@@ -90,6 +185,7 @@ export type Profile = {
   genre: string
   area: string
   subscriptionPlan: 'free' | 'standard' | 'premium'
+  subscriptionStatus: 'none' | 'active' | 'trialing' | 'past_due' | 'canceled' | 'unpaid'
   xAutoPost: boolean
 }
 
@@ -117,4 +213,9 @@ export type RecruitmentFilters = {
   area: string
   genre: string
   search: string
+}
+
+export type CommunityIntent = {
+  action?: 'review' | 'chat'
+  recruitmentId?: string
 }

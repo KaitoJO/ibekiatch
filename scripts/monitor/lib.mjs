@@ -10,6 +10,16 @@ import {
   FETCH_TIMEOUT_MS,
   MONITOR_KEYWORDS,
 } from './config.mjs'
+import {
+  filterRecruitmentPosts,
+  isAcceptableMonitorTitle,
+  isAcceptableMonitorUrl,
+  normalizeExternalUrl,
+  sanitizeMonitorItem,
+} from './urlUtils.mjs'
+import { isActiveMonitorHit, isClosedRecruitmentText } from './recruitmentStatus.mjs'
+import { passesKeywordScore } from './keywordScoring.mjs'
+import { shouldSkipBeforeAi } from './qualityScoring.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 
@@ -95,27 +105,51 @@ export async function parseRssFeed(url) {
   }))
 }
 
-export function toMonitorItems(sourceId, rawItems, keywords = MONITOR_KEYWORDS) {
-  const out = []
+export async function toMonitorItems(sourceId, rawItems, keywords = MONITOR_KEYWORDS) {
+  const candidates = []
   for (const item of rawItems) {
-    const blob = `${item.title}\n${item.snippet}`
+    const sanitized = sanitizeMonitorItem(item)
+    if (!sanitized) continue
+
+    const blob = `${sanitized.title}\n${sanitized.snippet}`
     const matched =
       item.matchedKeywords?.length > 0
         ? item.matchedKeywords
         : matchKeywords(blob, keywords)
     if (matched.length === 0) continue
-    out.push({
+    if (!passesKeywordScore(sanitized.title, sanitized.snippet)) continue
+    if (shouldSkipBeforeAi(sanitized.title, sanitized.snippet)) continue
+
+    candidates.push({
       source_id: sourceId,
-      external_id: String(item.externalId).slice(0, 200),
-      title: item.title.slice(0, 500),
-      url: item.url,
-      snippet: item.snippet.slice(0, 1000),
+      external_id: String(sanitized.externalId ?? item.externalId).slice(0, 200),
+      title: sanitized.title,
+      url: sanitized.url,
+      snippet: sanitized.snippet,
       matched_keywords: matched,
       published_at: item.publishedAt ? new Date(item.publishedAt).toISOString() : null,
       raw: item.raw ?? null,
     })
   }
-  return out
+
+  if (candidates.length === 0) return []
+
+  const openCandidates = candidates.filter(
+    (c) => !isClosedRecruitmentText(c.title, c.snippet),
+  )
+  const closedSkipped = candidates.length - openCandidates.length
+  if (closedSkipped > 0) {
+    console.log(`[${sourceId}] 募集終了除外: ${closedSkipped} 件`)
+  }
+  if (openCandidates.length === 0) return []
+
+  const before = openCandidates.length
+  const filtered = await filterRecruitmentPosts(openCandidates, sourceId)
+  const rejected = before - filtered.length
+  if (rejected > 0) {
+    console.log(`[${sourceId}] AI判定: ${filtered.length}/${before} 件を募集として採用`)
+  }
+  return filtered
 }
 
 export function getAdminSupabase() {
@@ -132,14 +166,94 @@ export function getAdminSupabase() {
   })
 }
 
+function sanitizeJsonValue(value) {
+  if (value == null) return null
+  if (typeof value === 'string') {
+    return value.replace(/[\uD800-\uDFFF]/g, '')
+  }
+  if (Array.isArray(value)) {
+    return value.map(sanitizeJsonValue)
+  }
+  if (typeof value === 'object') {
+    const out = {}
+    for (const [key, val] of Object.entries(value)) {
+      out[key] = sanitizeJsonValue(val)
+    }
+    return out
+  }
+  return value
+}
+
 export async function upsertHits(supabase, hits) {
   if (hits.length === 0) return { inserted: 0 }
-  const { error } = await supabase.from('monitor_hits').upsert(hits, {
+  const deduped = new Map()
+  for (const hit of hits) {
+    const key = `${hit.source_id}:${hit.external_id}`
+    deduped.set(key, hit)
+  }
+  const rows = [...deduped.values()].map((hit) => ({
+    ...hit,
+    title: (hit.title ?? '').replace(/[\uD800-\uDFFF]/g, ''),
+    snippet: (hit.snippet ?? '').replace(/[\uD800-\uDFFF]/g, ''),
+    raw: sanitizeJsonValue(hit.raw),
+  }))
+  const { error } = await supabase.from('monitor_hits').upsert(rows, {
     onConflict: 'source_id,external_id',
     ignoreDuplicates: false,
   })
   if (error) throw error
-  return { inserted: hits.length }
+  return { inserted: rows.length }
+}
+
+export async function purgeMonitorSource(supabase, sourceId) {
+  const { error, count } = await supabase
+    .from('monitor_hits')
+    .delete({ count: 'exact' })
+    .eq('source_id', sourceId)
+  if (error) throw error
+  return count ?? 0
+}
+
+export async function purgeDisabledMonitorSources(supabase) {
+  let total = 0
+  for (const sourceId of ['threads', 'facebook']) {
+    total += await purgeMonitorSource(supabase, sourceId)
+  }
+  return total
+}
+
+export async function purgeInvalidMonitorHits(supabase) {
+  let totalRemoved = 0
+  let from = 0
+  const pageSize = 1000
+
+  while (true) {
+    const { data, error } = await supabase
+      .from('monitor_hits')
+      .select('id, source_id, title, url, snippet')
+      .order('id', { ascending: true })
+      .range(from, from + pageSize - 1)
+    if (error) throw error
+    if (!data?.length) break
+
+    const toDelete = data.filter((row) => {
+      if (row.source_id === 'threads' || row.source_id === 'facebook') return true
+      if (!sanitizeMonitorItem(row)) return true
+      return !isActiveMonitorHit(row)
+    })
+
+    if (toDelete.length > 0) {
+      const ids = toDelete.map((r) => r.id)
+      const { error: delErr } = await supabase.from('monitor_hits').delete().in('id', ids)
+      if (delErr) throw delErr
+      totalRemoved += ids.length
+    }
+
+    if (data.length < pageSize) break
+    from += pageSize
+  }
+
+  return totalRemoved
 }
 
 export async function updateSourceRun(supabase, sourceId, status, errorMessage = null) {
@@ -154,8 +268,9 @@ export async function updateSourceRun(supabase, sourceId, status, errorMessage =
 }
 
 export function googleNewsRssUrl(keywords = MONITOR_KEYWORDS) {
-  const q = keywords.map((k) => `"${k}"`).join(' OR ')
-  const params = new URLSearchParams({ q, hl: 'ja', gl: 'JP', ceid: 'JP:ja' })
+  const kw = keywords.map((k) => `"${k}"`).join(' OR ')
+  const region = '(三重 OR 静岡 OR 愛知 OR 岐阜 OR 東海 OR 名古屋 OR 浜松 OR 四日市 OR 伊勢)'
+  const params = new URLSearchParams({ q: `(${kw}) ${region}`, hl: 'ja', gl: 'JP', ceid: 'JP:ja' })
   return `https://news.google.com/rss/search?${params.toString()}`
 }
 
@@ -198,53 +313,73 @@ export async function scrapeSearchPages(sourceId, searchUrlPattern, keywords) {
   return raw
 }
 
-export async function scrapeJmty(keywords = MONITOR_KEYWORDS) {
-  const { JMty_CATEGORIES, JMty_SEARCH_BASE } = await import('./config.mjs')
+function jmtyItemText($item) {
+  const title = $item.find('.p-item-title').first().text().replace(/\s+/g, ' ').trim()
+  const body = $item.find('.p-item-detail').first().text().replace(/\s+/g, ' ').trim()
+  return { title, body }
+}
+
+export async function scrapeJmty(keywords) {
+  const { JMTY_KEYWORDS, JMTY_TOKAI_PREFECTURES, JMty_CATEGORIES, jmtySearchUrl } =
+    await import('./config.mjs')
+  const { isTokaiRegionText } = await import('./tokaiRegion.mjs')
+  const filterKeywords = keywords ?? JMTY_KEYWORDS
   const seen = new Set()
   const raw = []
-  for (const keyword of keywords) {
-    for (const category of JMty_CATEGORIES) {
-      const url = JMty_SEARCH_BASE.replace('{keyword}', encodeURIComponent(keyword)).replace(
-        '{category}',
-        category,
-      )
-      try {
-        const html = await fetchText(url)
-        const $ = cheerio.load(html)
-        $('a[href*="/article-"], a[href*="/sale?keyword="]').each((_, el) => {
-          const title = $(el).text().replace(/\s+/g, ' ').trim()
-          const href = $(el).attr('href')
-          if (!title || !href || title.length < 4) return
-          const linkUrl = new URL(href, 'https://jmty.jp').toString()
-          if (seen.has(linkUrl)) return
-          seen.add(linkUrl)
-          raw.push({
-            externalId: hashId(linkUrl),
-            title,
-            url: linkUrl,
-            snippet: title,
-            publishedAt: null,
-            matchedKeywords: keywordsForSearch(title, keyword),
-            raw: { keyword, category, sourceUrl: url },
-          })
-        })
-        if (raw.length === 0) {
-          for (const link of extractLinks(html, url, 60)) {
-            if (seen.has(link.url)) continue
-            seen.add(link.url)
-            raw.push({
-              externalId: hashId(link.url),
-              title: link.title,
-              url: link.url,
-              snippet: link.snippet,
-              publishedAt: null,
-              matchedKeywords: keywordsForSearch(link.title, keyword),
-              raw: { keyword, category, sourceUrl: url },
+  for (const pref of JMTY_TOKAI_PREFECTURES) {
+    for (const keyword of filterKeywords) {
+      for (const category of JMty_CATEGORIES) {
+        const url = jmtySearchUrl(keyword, category, pref.slug)
+        try {
+          const html = await fetchText(url)
+          const $ = cheerio.load(html)
+          const items = $('.p-articles-list-item')
+          if (items.length > 0) {
+            items.each((_, el) => {
+              const $item = $(el)
+              const href = $item.find('a[href*="/article-"]').first().attr('href')
+              if (!href) return
+              const { title, body } = jmtyItemText($item)
+              if (!title) return
+              const blob = `${title}\n${body}`
+              if (!isTokaiRegionText(blob)) return
+              const matched = matchKeywords(blob, filterKeywords)
+              if (matched.length === 0) return
+              const linkUrl = new URL(href, 'https://jmty.jp').toString()
+              if (seen.has(linkUrl)) return
+              seen.add(linkUrl)
+              raw.push({
+                externalId: hashId(linkUrl),
+                title,
+                url: linkUrl,
+                snippet: body || title,
+                publishedAt: null,
+                matchedKeywords: matched,
+                raw: { keyword, category, sourceUrl: url, prefecture: pref.slug },
+              })
             })
+          } else {
+            for (const link of extractLinks(html, url, 60)) {
+              const blob = `${link.title}\n${link.snippet ?? ''}`
+              if (!isTokaiRegionText(blob)) continue
+              const matched = matchKeywords(blob, filterKeywords)
+              if (matched.length === 0) continue
+              if (seen.has(link.url)) continue
+              seen.add(link.url)
+              raw.push({
+                externalId: hashId(link.url),
+                title: link.title,
+                url: link.url,
+                snippet: link.snippet,
+                publishedAt: null,
+                matchedKeywords: matched,
+                raw: { keyword, category, sourceUrl: url, prefecture: pref.slug },
+              })
+            }
           }
+        } catch (err) {
+          console.warn(`[jmty] skip ${pref.slug}/${keyword}/${category}:`, err.message)
         }
-      } catch (err) {
-        console.warn(`[jmty] skip ${keyword}/${category}:`, err.message)
       }
     }
   }
@@ -308,43 +443,40 @@ export async function scrapeMaipureMie(keywords = MONITOR_KEYWORDS) {
 export async function scrapeEventbank(keywords = MONITOR_KEYWORDS) {
   const seen = new Set()
   const raw = []
+  const searchOpts = {
+    buildQuery: (k) => `site:eventbank.jp OR site:press.eventbank.jp ${k}`,
+    linkIncludes: ['eventbank.jp'],
+    urlPattern: /eventbank\.jp\//i,
+  }
+
   for (const keyword of keywords) {
-    const googleQuery = encodeURIComponent(`site:eventbank.jp OR site:press.eventbank.jp ${keyword}`)
-    const url = `https://www.google.com/search?q=${googleQuery}&hl=ja`
+    let items = []
     try {
-      const html = await fetchText(url)
-      const $ = cheerio.load(html)
-      $('a[href*="eventbank"]').each((_, el) => {
-        const href = $(el).attr('href')
-        if (!href) return
-        let linkUrl = href
-        if (href.startsWith('/url?q=')) {
-          try {
-            linkUrl = new URL(href, 'https://www.google.com').searchParams.get('q') ?? href
-          } catch {
-            return
-          }
-        }
-        if (!linkUrl.includes('eventbank')) return
-        const block = $(el).closest('div').parent()
-        const title =
-          block.find('h3').first().text().trim() ||
-          $(el).text().replace(/\s+/g, ' ').trim()
-        if (!title || title.length < 6) return
-        if (seen.has(linkUrl)) return
-        seen.add(linkUrl)
-        raw.push({
-          externalId: hashId(linkUrl),
-          title,
-          url: linkUrl,
-          snippet: title,
-          publishedAt: null,
-          matchedKeywords: keywordsForSearch(title, keyword),
-          raw: { keyword, sourceUrl: url, via: 'google' },
-        })
-      })
+      items = await scrapeGoogleSiteFetch(keyword, searchOpts)
     } catch (err) {
-      console.warn(`[eventbank] skip ${keyword}:`, err.message)
+      console.warn(`[eventbank] google skip ${keyword}:`, err.message)
+    }
+
+    if (items.length === 0) {
+      try {
+        items = await scrapeDdgSiteFetch(keyword, searchOpts)
+      } catch (err) {
+        console.warn(`[eventbank] ddg skip ${keyword}:`, err.message)
+      }
+    }
+
+    for (const item of items) {
+      const sanitized = sanitizeMonitorItem(item)
+      if (!sanitized) continue
+      if (seen.has(sanitized.url)) continue
+      seen.add(sanitized.url)
+      raw.push({
+        ...sanitized,
+        externalId: hashId(sanitized.url),
+        publishedAt: null,
+        matchedKeywords: keywordsForSearch(`${sanitized.title}\n${sanitized.snippet}`, keyword),
+        raw: { ...(item.raw ?? {}), keyword, via: item.raw?.via ?? 'search' },
+      })
     }
   }
   return raw
@@ -362,21 +494,15 @@ export async function scrapeGoogleSiteFetch(keyword, { buildQuery, linkIncludes 
   $('a[href]').each((_, el) => {
     const href = $(el).attr('href')
     if (!href) return
-    let linkUrl = href
-    if (href.startsWith('/url?q=')) {
-      try {
-        linkUrl = new URL(href, 'https://www.google.com').searchParams.get('q') ?? href
-      } catch {
-        return
-      }
-    }
+    const linkUrl = normalizeExternalUrl(href, 'https://www.google.com')
+    if (!linkUrl || !isAcceptableMonitorUrl(linkUrl)) return
     if (linkIncludes.length > 0 && !linkIncludes.some((s) => linkUrl.includes(s))) return
     if (urlPattern && !urlPattern.test(linkUrl)) return
     const block = $(el).closest('div').parent()
     const title =
       block.find('h3').first().text().trim() ||
       $(el).text().replace(/\s+/g, ' ').trim()
-    if (!title || title.length < 8) return
+    if (!isAcceptableMonitorTitle(title)) return
     if (seen.has(linkUrl)) return
     seen.add(linkUrl)
     items.push({
@@ -443,10 +569,12 @@ export async function scrapeDdgSiteFetch(keyword, { buildQuery, linkIncludes = [
     }
     if (!linkUrl.startsWith('http')) return
     if (/duckduckgo\.com\/y\.js|ad_domain=/i.test(linkUrl)) return
+    linkUrl = normalizeExternalUrl(linkUrl) ?? linkUrl
+    if (!linkUrl.startsWith('http') || !isAcceptableMonitorUrl(linkUrl)) return
     if (linkIncludes.length > 0 && !linkIncludes.some((s) => linkUrl.includes(s))) return
     if (urlPattern && !urlPattern.test(linkUrl)) return
     const title = $(el).text().replace(/\s+/g, ' ').trim()
-    if (!title || title.length < 6) return
+    if (!isAcceptableMonitorTitle(title)) return
     if (seen.has(linkUrl)) return
     seen.add(linkUrl)
     items.push({

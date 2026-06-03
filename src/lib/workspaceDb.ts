@@ -6,6 +6,11 @@ import type {
   CommunityPostForm,
   CommunityReview,
   CommunityReviewForm,
+  EventChatMessage,
+  EventReview,
+  EventReviewForm,
+  EventReviewSummary,
+  CollectedEvent,
   MonitorHit,
   NotificationRecord,
   Profile,
@@ -39,6 +44,9 @@ type ProfileRow = {
   genre: string | null
   area: string | null
   subscription_plan?: string | null
+  subscription_status?: string | null
+  stripe_customer_id?: string | null
+  stripe_subscription_id?: string | null
   x_auto_post?: boolean | null
 }
 
@@ -73,6 +81,19 @@ function recruitmentFromRow(row: RecruitmentRow): Recruitment {
   }
 }
 
+function normalizeSubscriptionStatus(value: string | null | undefined): Profile['subscriptionStatus'] {
+  if (
+    value === 'active' ||
+    value === 'trialing' ||
+    value === 'past_due' ||
+    value === 'canceled' ||
+    value === 'unpaid'
+  ) {
+    return value
+  }
+  return 'none'
+}
+
 function profileFromRow(row: ProfileRow): Profile {
   const plan = row.subscription_plan
   return {
@@ -83,6 +104,7 @@ function profileFromRow(row: ProfileRow): Profile {
     area: row.area ?? '',
     subscriptionPlan:
       plan === 'standard' || plan === 'premium' ? plan : 'free',
+    subscriptionStatus: normalizeSubscriptionStatus(row.subscription_status),
     xAutoPost: Boolean(row.x_auto_post),
   }
 }
@@ -94,14 +116,183 @@ export type WorkspaceData = {
   notifications: NotificationRecord[]
   communityPosts: CommunityPost[]
   communityReviews: CommunityReview[]
+  eventReviews: EventReview[]
+  eventChatMessages: EventChatMessage[]
   monitorHits: MonitorHit[]
+  collectedEvents: CollectedEvent[]
+}
+
+const EVENTS_LIMIT = 100
+export const EVENTS_TEST_LIMIT = 300
+export const MONITOR_HITS_TEST_LIMIT = 300
+
+type EventRow = {
+  id: string
+  monitor_hit_id: string | null
+  recruitment_id: string | null
+  source_id: string | null
+  origin: 'collected' | 'host'
+  title: string
+  organizer: string
+  location: string
+  area: string
+  event_date: string | null
+  recruit_start: string | null
+  recruit_end: string | null
+  fee: string
+  category: string
+  application_url: string | null
+  source_url: string | null
+  description: string
+  status: 'open' | 'closed'
+  confidence: number
+  created_at: string
+}
+
+function eventFromRow(row: EventRow): CollectedEvent {
+  return {
+    id: row.id,
+    monitorHitId: row.monitor_hit_id,
+    recruitmentId: row.recruitment_id,
+    sourceId: row.source_id,
+    origin: row.origin,
+    title: row.title,
+    organizer: row.organizer,
+    location: row.location,
+    area: row.area,
+    eventDate: row.event_date,
+    recruitStart: row.recruit_start,
+    recruitEnd: row.recruit_end,
+    fee: row.fee,
+    category: row.category,
+    applicationUrl: row.application_url,
+    sourceUrl: row.source_url,
+    description: row.description,
+    status: row.status,
+    confidence: row.confidence,
+    createdAt: row.created_at,
+  }
+}
+
+export async function fetchCollectedEvents(
+  supabase: SupabaseClient,
+  limit = EVENTS_LIMIT,
+  includeClosed = false,
+): Promise<CollectedEvent[]> {
+  let query = supabase
+    .from('events')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  if (!includeClosed) {
+    query = query.eq('status', 'open')
+  }
+
+  const { data, error } = await query
+  if (error) throw error
+  return (data ?? []).map((row) => eventFromRow(row as EventRow))
+}
+
+const MONITOR_HITS_LIMIT = 100
+
+type MonitorHitRow = {
+  id: string
+  source_id: string
+  title: string
+  url: string | null
+  snippet: string | null
+  matched_keywords: string[] | null
+  published_at: string | null
+  created_at: string
+}
+
+function monitorHitFromRow(h: MonitorHitRow): MonitorHit {
+  return {
+    id: h.id,
+    sourceId: h.source_id,
+    title: h.title,
+    url: h.url,
+    snippet: h.snippet ?? '',
+    matchedKeywords: h.matched_keywords ?? [],
+    publishedAt: h.published_at,
+    createdAt: h.created_at,
+  }
+}
+
+export async function fetchMonitorHits(
+  supabase: SupabaseClient,
+  limit = MONITOR_HITS_LIMIT,
+): Promise<MonitorHit[]> {
+  const { data, error } = await supabase
+    .from('monitor_hits')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  if (error) throw error
+  return (data ?? []).map((h) => monitorHitFromRow(h as MonitorHitRow))
+}
+
+export function buildEventReviewSummaries(eventReviews: EventReview[]): EventReviewSummary[] {
+  const grouped = new Map<string, EventReview[]>()
+  for (const review of eventReviews) {
+    const list = grouped.get(review.recruitmentId) ?? []
+    list.push(review)
+    grouped.set(review.recruitmentId, list)
+  }
+
+  return [...grouped.entries()].map(([recruitmentId, reviews]) => {
+    const count = reviews.length
+    const avgSales = reviews.reduce((sum, r) => sum + r.ratingSales, 0) / count
+    const avgTraffic = reviews.reduce((sum, r) => sum + r.ratingTraffic, 0) / count
+    const avgOrganizer = reviews.reduce((sum, r) => sum + r.ratingOrganizer, 0) / count
+    const tagCounts = new Map<string, number>()
+    for (const review of reviews) {
+      for (const tag of review.tags) {
+        tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1)
+      }
+    }
+    const topTags = [...tagCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([tag]) => tag)
+
+    return {
+      recruitmentId,
+      count,
+      avgSales,
+      avgTraffic,
+      avgOrganizer,
+      avgOverall: (avgSales + avgTraffic + avgOrganizer) / 3,
+      topTags,
+    }
+  })
 }
 
 export async function fetchWorkspace(
   supabase: SupabaseClient,
   userId: string,
+  options: {
+    monitorHitsLimit?: number
+    eventsLimit?: number
+    includeClosedEvents?: boolean
+  } = {},
 ): Promise<WorkspaceData> {
-  const [recruitmentsRes, applicationsRes, profileRes, notificationsRes, postsRes, reviewsRes, monitorHitsRes] =
+  const monitorHitsLimit = options.monitorHitsLimit ?? MONITOR_HITS_LIMIT
+  const eventsLimit = options.eventsLimit ?? EVENTS_LIMIT
+  const includeClosedEvents = options.includeClosedEvents ?? false
+
+  let eventsQuery = supabase
+    .from('events')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(eventsLimit)
+  if (!includeClosedEvents) {
+    eventsQuery = eventsQuery.eq('status', 'open')
+  }
+
+  const [recruitmentsRes, applicationsRes, profileRes, notificationsRes, postsRes, reviewsRes, eventReviewsRes, chatRes, monitorHitsRes, eventsRes] =
     await Promise.all([
       supabase
         .from('recruitments')
@@ -128,15 +319,30 @@ export async function fetchWorkspace(
         .select('*')
         .order('created_at', { ascending: false }),
       supabase
+        .from('event_reviews')
+        .select('*')
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('event_chat_messages')
+        .select('*')
+        .order('created_at', { ascending: true })
+        .limit(500),
+      supabase
         .from('monitor_hits')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(50),
+        .limit(monitorHitsLimit),
+      eventsQuery,
     ])
 
   if (recruitmentsRes.error) throw recruitmentsRes.error
   if (applicationsRes.error) throw applicationsRes.error
   if (profileRes.error) throw profileRes.error
+
+  const recruitments = (recruitmentsRes.data ?? []).map((row) =>
+    recruitmentFromRow(row as RecruitmentRow),
+  )
+  const recruitmentMap = new Map(recruitments.map((r) => [r.id, r]))
 
   const reviews = (reviewsRes.error ? [] : (reviewsRes.data ?? [])).map((r) => ({
     id: r.id,
@@ -162,16 +368,44 @@ export async function fetchWorkspace(
       body: p.body,
       area: p.area ?? '',
       genre: p.genre ?? '',
+      region: p.region ?? p.area ?? '',
+      recruitmentId: p.recruitment_id ?? null,
       createdAt: p.created_at,
       reviewCount: postReviews.length,
       avgRating,
     }
   })
 
+  const eventReviews = (eventReviewsRes.error ? [] : (eventReviewsRes.data ?? [])).map((row) => {
+    const recruitment = recruitmentMap.get(row.recruitment_id)
+    return {
+      id: row.id,
+      recruitmentId: row.recruitment_id,
+      userId: row.user_id,
+      authorName: row.author_name ?? '',
+      ratingSales: row.rating_sales,
+      ratingTraffic: row.rating_traffic,
+      ratingOrganizer: row.rating_organizer,
+      body: row.body ?? '',
+      tags: row.tags ?? [],
+      createdAt: row.created_at,
+      eventTitle: recruitment?.title ?? 'イベント',
+      eventArea: recruitment?.area ?? '',
+      eventVenue: recruitment?.venue ?? '',
+    }
+  })
+
+  const eventChatMessages = (chatRes.error ? [] : (chatRes.data ?? [])).map((row) => ({
+    id: row.id,
+    recruitmentId: row.recruitment_id,
+    userId: row.user_id,
+    authorName: row.author_name ?? '',
+    body: row.body,
+    createdAt: row.created_at,
+  }))
+
   return {
-    recruitments: (recruitmentsRes.data ?? []).map((row) =>
-      recruitmentFromRow(row as RecruitmentRow),
-    ),
+    recruitments,
     applications: (applicationsRes.data ?? []).map((row) => ({
       id: row.id,
       recruitmentId: row.recruitment_id,
@@ -192,16 +426,14 @@ export async function fetchWorkspace(
     })),
     communityPosts: posts,
     communityReviews: reviews,
-    monitorHits: (monitorHitsRes.error ? [] : (monitorHitsRes.data ?? [])).map((h) => ({
-      id: h.id,
-      sourceId: h.source_id,
-      title: h.title,
-      url: h.url,
-      snippet: h.snippet ?? '',
-      matchedKeywords: h.matched_keywords ?? [],
-      publishedAt: h.published_at,
-      createdAt: h.created_at,
-    })),
+    eventReviews,
+    eventChatMessages,
+    monitorHits: (monitorHitsRes.error ? [] : (monitorHitsRes.data ?? [])).map((h) =>
+      monitorHitFromRow(h as MonitorHitRow),
+    ),
+    collectedEvents: (eventsRes.error ? [] : (eventsRes.data ?? [])).map((row) =>
+      eventFromRow(row as EventRow),
+    ),
   }
 }
 
@@ -243,7 +475,6 @@ export async function upsertProfile(
         user_id: userId,
         display_name: form.displayName.trim(),
         business_name: form.businessName.trim(),
-        genre: form.genre.trim(),
         area: form.area.trim(),
         x_auto_post: form.xAutoPost ?? false,
         updated_at: new Date().toISOString(),
@@ -324,7 +555,9 @@ export async function insertCommunityPost(
     title: form.title.trim(),
     body: form.body.trim(),
     area: form.area.trim(),
+    region: form.area.trim(),
     genre: form.genre.trim(),
+    recruitment_id: null,
   })
   if (error) throw error
 }
@@ -342,6 +575,41 @@ export async function insertCommunityReview(
     author_name: authorName,
     rating: form.rating,
     body: form.body.trim(),
+  })
+  if (error) throw error
+}
+
+export async function insertEventReview(
+  supabase: SupabaseClient,
+  userId: string,
+  authorName: string,
+  form: EventReviewForm,
+): Promise<void> {
+  const { error } = await supabase.from('event_reviews').insert({
+    recruitment_id: form.recruitmentId,
+    user_id: userId,
+    author_name: authorName,
+    rating_sales: form.ratingSales,
+    rating_traffic: form.ratingTraffic,
+    rating_organizer: form.ratingOrganizer,
+    body: form.body.trim(),
+    tags: form.tags,
+  })
+  if (error) throw error
+}
+
+export async function insertEventChatMessage(
+  supabase: SupabaseClient,
+  userId: string,
+  authorName: string,
+  recruitmentId: string,
+  body: string,
+): Promise<void> {
+  const { error } = await supabase.from('event_chat_messages').insert({
+    recruitment_id: recruitmentId,
+    user_id: userId,
+    author_name: authorName,
+    body: body.trim(),
   })
   if (error) throw error
 }

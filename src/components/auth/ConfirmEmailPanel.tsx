@@ -1,3 +1,4 @@
+import { signupSandboxHint } from '../../lib/authConfig'
 import { Mail, RefreshCw } from 'lucide-react'
 import './auth.css'
 
@@ -31,6 +32,7 @@ export function ConfirmEmailPanel({
       <ul className="confirm-email__tips">
         <li>届かない場合は迷惑メールフォルダを確認</li>
         <li>リンクの有効期限は約1時間です</li>
+        {signupSandboxHint() && <li>{signupSandboxHint()}</li>}
       </ul>
 
       {message && (

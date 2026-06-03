@@ -12,8 +12,13 @@
     "db:status": "node scripts/supabase-db-status.mjs",
     "db:link": "supabase link",
     "auth:smtp": "node scripts/setup-auth-smtp.mjs",
+    "auth:diagnose": "node scripts/auth-email-diagnose.mjs",
+    "auth:no-confirm": "node scripts/auth-no-confirm.mjs",
+    "auth:confirm-on": "node scripts/auth-confirm-on.mjs",
+    "stripe:setup": "node scripts/stripe-setup.mjs",
+    "stripe:bootstrap": "node scripts/stripe-bootstrap.mjs",
     "monitor": "node scripts/monitor-run.mjs",
-    "monitor:social": "node scripts/monitor-run.mjs twitter instagram threads",
+    "monitor:social": "node scripts/monitor-run.mjs twitter instagram",
     "playwright:install": "playwright install chromium"
   },
   "dependencies": {
@@ -24,7 +29,8 @@
     "playwright-core": "^1.51.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
-    "rss-parser": "^3.13.0"
+    "rss-parser": "^3.13.0",
+    "stripe": "^18.5.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

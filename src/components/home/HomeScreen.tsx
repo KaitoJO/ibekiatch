@@ -1,17 +1,21 @@
-import { useMemo, useRef, useState } from 'react'
-import { Bell, MapPin, Search, SlidersHorizontal, X } from 'lucide-react'
-import { APP_NAME, APP_TAGLINE, REGION_LABEL } from '../../lib/brand'
-import { deriveFilterOptions, filterRecruitments, formatFee } from '../../lib/recruitmentUtils'
+import { useMemo, useState } from 'react'
+import { Bell, MapPin, Search, X } from 'lucide-react'
+import { canViewFullMonitorFeed } from '../../lib/authConfig'
+import { APP_NAME, APP_TAGLINE, FREE_AI_HIT_LIMIT, REGION_LABEL } from '../../lib/brand'
+import { hasPaidAccess } from '../../lib/billing'
+import {
+  deriveEventAreas,
+  filterDisplayEvents,
+  mergeEventList,
+} from '../../lib/eventList'
+import { filterActiveRecruitments } from '../../lib/recruitmentStatus'
 import { formatError } from '../../lib/formatError'
 import { useAuth } from '../../hooks/useAuth'
 import type { TabId } from '../../types'
-import { AiCollectedFeed } from './AiCollectedFeed'
-import { RecruitmentCard } from './RecruitmentCard'
-import { RecruitmentDetailScreen } from './RecruitmentDetailScreen'
+import { EventCard } from './EventCard'
+import { EventDetailScreen } from './EventDetailScreen'
 import '../shared/shared.css'
 import './home.css'
-
-const FREE_AI_HIT_LIMIT = 3
 
 type Props = {
   onNavigateTab: (tab: TabId) => void
@@ -20,56 +24,59 @@ type Props = {
 export function HomeScreen({ onNavigateTab }: Props) {
   const {
     recruitments,
+    collectedEvents,
     applications,
     appliedRecruitmentIds,
-    monitorHits,
     applyToRecruitment,
     confirmShop,
     workspaceLoading,
     workspaceError,
     refreshWorkspace,
     unreadNotificationCount,
+    profile,
+    session,
   } = useAuth()
 
   const [confirmBusyId, setConfirmBusyId] = useState<string | null>(null)
-
   const [area, setArea] = useState('すべて')
-  const [genre, setGenre] = useState('すべて')
   const [search, setSearch] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
-  const [activeCard, setActiveCard] = useState(0)
   const [detailId, setDetailId] = useState<string | null>(null)
   const [applyBusyId, setApplyBusyId] = useState<string | null>(null)
   const [applyError, setApplyError] = useState<string | null>(null)
-  const carouselRef = useRef<HTMLDivElement>(null)
 
-  const { areas, genres } = useMemo(() => deriveFilterOptions(recruitments), [recruitments])
+  const fullAccess = canViewFullMonitorFeed(session?.user?.email)
+  const paid = hasPaidAccess(profile) || fullAccess
 
-  const filtered = useMemo(
-    () => filterRecruitments(recruitments, { area, genre, search }),
-    [recruitments, area, genre, search],
+  const activeRecruitments = useMemo(
+    () => filterActiveRecruitments(recruitments),
+    [recruitments],
   )
 
-  const detailRecruitment = detailId
-    ? recruitments.find((r) => r.id === detailId) ?? null
-    : null
+  const allEvents = useMemo(
+    () =>
+      mergeEventList(collectedEvents, activeRecruitments, {
+        includeClosed: fullAccess,
+      }),
+    [collectedEvents, activeRecruitments, fullAccess],
+  )
 
-  const todayCount = recruitments.filter((r) => r.isNew).length
-  const urgentCount = recruitments.filter((r) => r.isUrgent).length
+  const areas = useMemo(() => deriveEventAreas(allEvents), [allEvents])
+
+  const filtered = useMemo(
+    () => filterDisplayEvents(allEvents, { area, search }),
+    [allEvents, area, search],
+  )
+
+  const displayLimit = paid ? filtered.length : FREE_AI_HIT_LIMIT
+  const visible = filtered.slice(0, displayLimit)
+  const hiddenCount = Math.max(0, filtered.length - displayLimit)
+
+  const detailEvent = detailId ? allEvents.find((e) => e.id === detailId) ?? null : null
+
+  const todayCount = allEvents.filter((e) => e.isNew && e.status === 'open').length
+  const urgentCount = allEvents.filter((e) => e.isUrgent && e.status === 'open').length
   const pendingApplications = applications.filter((a) => a.status === 'pending').length
-
-  const handleScroll = () => {
-    const el = carouselRef.current
-    if (!el || filtered.length === 0) return
-    const cardWidth = el.scrollWidth / filtered.length
-    const index = Math.round(el.scrollLeft / cardWidth)
-    setActiveCard(Math.min(index, filtered.length - 1))
-  }
-
-  const resetCarousel = () => {
-    setActiveCard(0)
-    if (carouselRef.current) carouselRef.current.scrollLeft = 0
-  }
 
   const handleApply = async (recruitmentId: string) => {
     setApplyError(null)
@@ -83,9 +90,10 @@ export function HomeScreen({ onNavigateTab }: Props) {
     }
   }
 
-  const detailApplication = detailId
-    ? applications.find((a) => a.recruitmentId === detailId) ?? null
-    : null
+  const detailApplication =
+    detailEvent?.recruitmentId
+      ? applications.find((a) => a.recruitmentId === detailEvent.recruitmentId) ?? null
+      : null
 
   const handleConfirmShop = async (applicationId: string) => {
     setApplyError(null)
@@ -99,15 +107,23 @@ export function HomeScreen({ onNavigateTab }: Props) {
     }
   }
 
-  if (detailRecruitment) {
+  if (detailEvent) {
     return (
-      <RecruitmentDetailScreen
-        recruitment={detailRecruitment}
-        applied={appliedRecruitmentIds.has(detailRecruitment.id)}
-        applyBusy={applyBusyId === detailRecruitment.id}
+      <EventDetailScreen
+        event={detailEvent}
+        applied={
+          detailEvent.recruitmentId
+            ? appliedRecruitmentIds.has(detailEvent.recruitmentId)
+            : false
+        }
+        applyBusy={
+          detailEvent.recruitmentId ? applyBusyId === detailEvent.recruitmentId : false
+        }
         confirmBusy={detailApplication ? confirmBusyId === detailApplication.id : false}
         onBack={() => setDetailId(null)}
-        onApply={() => void handleApply(detailRecruitment.id)}
+        onApply={() => {
+          if (detailEvent.recruitmentId) void handleApply(detailEvent.recruitmentId)
+        }}
         onConfirmShop={
           detailApplication?.status === 'pending'
             ? () => void handleConfirmShop(detailApplication.id)
@@ -124,7 +140,7 @@ export function HomeScreen({ onNavigateTab }: Props) {
           <div>
             <p className="home-header__greeting">{APP_NAME} · {REGION_LABEL}</p>
             <h1 className="home-header__title">{APP_TAGLINE}</h1>
-            <p className="home-header__tagline">AIが21ソースから出店募集を自動収集</p>
+            <p className="home-header__tagline">AIが21ソースから東海の出店募集を自動収集</p>
           </div>
           <div className="home-header__actions">
             <button
@@ -152,22 +168,16 @@ export function HomeScreen({ onNavigateTab }: Props) {
             <input
               type="search"
               className="home-search__input"
-              placeholder="キーワードで検索（会場・エリア・ジャンル）"
+              placeholder="キーワードで検索（会場・エリア）"
               value={search}
-              onChange={(e) => {
-                setSearch(e.target.value)
-                resetCarousel()
-              }}
+              onChange={(e) => setSearch(e.target.value)}
               autoFocus
             />
             {search && (
               <button
                 type="button"
                 className="home-search__clear"
-                onClick={() => {
-                  setSearch('')
-                  resetCarousel()
-                }}
+                onClick={() => setSearch('')}
                 aria-label="検索をクリア"
               >
                 <X size={16} />
@@ -201,27 +211,27 @@ export function HomeScreen({ onNavigateTab }: Props) {
         {workspaceError && (
           <div className="alert alert--error">
             {workspaceError}
-            <button type="button" onClick={() => void refreshWorkspace()} style={{ display: 'block', marginTop: 8, fontWeight: 700, color: 'var(--color-primary)' }}>
+            <button
+              type="button"
+              onClick={() => void refreshWorkspace()}
+              style={{ display: 'block', marginTop: 8, fontWeight: 700, color: 'var(--color-primary)' }}
+            >
               再読み込み
             </button>
           </div>
         )}
         {applyError && <div className="alert alert--error">{applyError}</div>}
 
-        <AiCollectedFeed
-          hits={monitorHits}
-          limit={FREE_AI_HIT_LIMIT}
-          onUpgrade={() => onNavigateTab('profile')}
-        />
-
-        <p className="home-section-label">主催者掲載の募集</p>
-
         <section className="filter-section" aria-label="フィルター">
           <div className="filter-section__label">
             <MapPin size={14} />
             エリア
             {area !== 'すべて' && (
-              <button type="button" className="filter-clear" onClick={() => { setArea('すべて'); resetCarousel() }}>
+              <button
+                type="button"
+                className="filter-clear"
+                onClick={() => setArea('すべて')}
+              >
                 クリア
               </button>
             )}
@@ -232,105 +242,65 @@ export function HomeScreen({ onNavigateTab }: Props) {
                 key={a}
                 type="button"
                 className={`filter-chip${area === a ? ' filter-chip--active' : ''}`}
-                onClick={() => { setArea(a); resetCarousel() }}
+                onClick={() => setArea(a)}
               >
                 {a}
               </button>
             ))}
           </div>
 
-          <div className="filter-section__label" style={{ marginTop: 14 }}>
-            <SlidersHorizontal size={14} />
-            ジャンル
-            {genre !== 'すべて' && (
-              <button type="button" className="filter-clear" onClick={() => { setGenre('すべて'); resetCarousel() }}>
-                クリア
-              </button>
-            )}
-          </div>
-          <div className="filter-chips">
-            {genres.map((g) => (
-              <button
-                key={g}
-                type="button"
-                className={`filter-chip${genre === g ? ' filter-chip--active' : ''}`}
-                onClick={() => { setGenre(g); resetCarousel() }}
-              >
-                {g}
-              </button>
-            ))}
-          </div>
-
-          {(area !== 'すべて' || genre !== 'すべて' || search) && (
+          {area !== 'すべて' || search ? (
             <p className="filter-result-hint">
               {filtered.length}件ヒット
               {search ? `（「${search}」）` : ''}
+              {fullAccess ? ' · テスト: 終了済み含む' : ''}
             </p>
-          )}
+          ) : null}
         </section>
 
         <div className="section-header">
-          <h2 className="section-header__title">スワイプで募集を見る</h2>
-          <span className="section-header__count">{filtered.length}件</span>
+          <h2 className="section-header__title">出店募集一覧</h2>
+          <span className="section-header__count">{visible.length}件</span>
         </div>
 
-        {filtered.length > 0 ? (
+        {visible.length > 0 ? (
           <>
-            <div ref={carouselRef} className="card-carousel" onScroll={handleScroll}>
-              {filtered.map((r) => (
-                <RecruitmentCard
-                  key={r.id}
-                  recruitment={r}
-                  applied={appliedRecruitmentIds.has(r.id)}
-                  applyBusy={applyBusyId === r.id}
-                  onOpen={() => setDetailId(r.id)}
-                  onApply={() => void handleApply(r.id)}
+            <div className="card-grid">
+              {visible.map((event) => (
+                <EventCard
+                  key={event.id}
+                  event={event}
+                  applied={
+                    event.recruitmentId
+                      ? appliedRecruitmentIds.has(event.recruitmentId)
+                      : false
+                  }
+                  applyBusy={
+                    event.recruitmentId ? applyBusyId === event.recruitmentId : false
+                  }
+                  onOpen={() => setDetailId(event.id)}
+                  onApply={() => {
+                    if (event.recruitmentId) void handleApply(event.recruitmentId)
+                  }}
                 />
               ))}
             </div>
 
-            <div className="carousel-dots" aria-hidden>
-              {filtered.map((_, i) => (
-                <span key={i} className={`carousel-dot${i === activeCard ? ' carousel-dot--active' : ''}`} />
-              ))}
-            </div>
-
-            <section className="list-section">
-              <div className="section-header">
-                <h2 className="section-header__title">一覧</h2>
-              </div>
-              {filtered.map((r) => (
-                <button
-                  key={r.id}
-                  type="button"
-                  className="recruitment-list-item"
-                  onClick={() => setDetailId(r.id)}
-                >
-                  <div className="recruitment-list-item__thumb" style={{ background: r.imageGradient }} />
-                  <div className="recruitment-list-item__content">
-                    <div className="recruitment-list-item__title">{r.title}</div>
-                    <div className="recruitment-list-item__sub">
-                      {r.area} · {r.genre}
-                      {appliedRecruitmentIds.has(r.id) ? ' · 応募済み' : ''}
-                    </div>
-                  </div>
-                  <div className="recruitment-list-item__fee">{formatFee(r.fee, true)}</div>
+            {hiddenCount > 0 && (
+              <div className="ai-feed__upgrade">
+                <p>他 {hiddenCount} 件の募集があります</p>
+                <button type="button" className="ai-feed__upgrade-btn" onClick={() => onNavigateTab('profile')}>
+                  プランを見る
                 </button>
-              ))}
-            </section>
+              </div>
+            )}
           </>
-        ) : recruitments.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-state__icon">🔍</div>
-            <p className="empty-state__title">現在募集情報を収集中です</p>
-            <p>AIが21ソースから三重県の出店募集を自動収集しています。新着は上の「AI収集の新着」に表示されます。</p>
-          </div>
         ) : (
-          <div className="empty-state">
-            <div className="empty-state__icon">🚚</div>
-            <p className="empty-state__title">該当する募集がありません</p>
-            <p>フィルターや検索条件を変更してみてください。</p>
-          </div>
+          <p className="home-empty">
+            {collectedEvents.length === 0 && activeRecruitments.length === 0
+              ? '東海地方（三重・静岡・愛知・岐阜）の募集中イベントがありません。AIが1時間ごとに収集しています。'
+              : '条件に合う募集がありません。フィルターを変更してください。'}
+          </p>
         )}
       </div>
     </div>

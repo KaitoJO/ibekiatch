@@ -7,6 +7,7 @@ import {
   MIE_FM_PAGES,
   MIE_NEWS_PAGES,
   MIE_TOURISM_PAGES,
+  JMTY_KEYWORDS,
   MONITOR_KEYWORDS,
   OUTLET_MALL_PAGES,
   PLAYWRIGHT_SOCIAL_SOURCES,
@@ -18,6 +19,8 @@ import {
   googleNewsRssUrl,
   kokuchizRssUrl,
   parseRssFeed,
+  purgeDisabledMonitorSources,
+  purgeInvalidMonitorHits,
   scrapeEventbank,
   scrapeJmty,
   scrapeMaipureMie,
@@ -30,6 +33,7 @@ import {
   upsertHits,
 } from './lib.mjs'
 import { runAllPlaywrightSocialSources } from './playwright-social.mjs'
+import { closeExpiredEvents, processMonitorHitsToEvents, recheckOpenEventsFromSources, purgeNonTokaiEvents } from './eventsPipeline.mjs'
 
 const REGULAR_JOBS = [
   ['kokuchiz', async () => {
@@ -40,7 +44,24 @@ const REGULAR_JOBS = [
     }
     return all
   }],
-  ['google_news', async () => parseRssFeed(googleNewsRssUrl())],
+  ['google_news', async () => {
+    const seen = new Set()
+    const all = []
+    for (const keyword of MONITOR_KEYWORDS) {
+      try {
+        const items = await parseRssFeed(googleNewsRssUrl([keyword]))
+        for (const item of items) {
+          const key = item.url || item.externalId
+          if (seen.has(key)) continue
+          seen.add(key)
+          all.push(item)
+        }
+      } catch (err) {
+        console.warn(`[google_news] skip "${keyword}":`, err.message)
+      }
+    }
+    return all
+  }],
   ['peatix', async () => {
     const all = []
     for (const keyword of MONITOR_KEYWORDS.slice(0, 3)) {
@@ -60,8 +81,13 @@ const REGULAR_JOBS = [
     }
     return all
   }],
-  ['jmty', async () => scrapeJmty(MONITOR_KEYWORDS)],
-  ['eventbank', async () => scrapeEventbank(MONITOR_KEYWORDS)],
+  ['jmty', async () => scrapeJmty(JMTY_KEYWORDS), JMTY_KEYWORDS],
+  ['eventbank', async () => {
+    const fetchItems = await scrapeEventbank(MONITOR_KEYWORDS)
+    if (fetchItems.length > 0) return fetchItems
+    const { scrapeEventbankPlaywright } = await import('./playwright-social.mjs')
+    return scrapeEventbankPlaywright(MONITOR_KEYWORDS)
+  }],
   ['mie_cities', async () => scrapeMieCities(MIE_CITY_PAGES)],
   ['shokokai', async () => scrapeStaticPages('shokokai', SHOKOKAI_PAGES)],
   ['michinoeki', async () => scrapeMichinoeki(MICHINOEKI_PAGES)],
@@ -87,7 +113,7 @@ async function runSource(sourceId, fn, keywordList = MONITOR_KEYWORDS, dryRun = 
       }
       return { sourceId, hits: 0, skipped: true, reason: raw.reason }
     }
-    const hits = toMonitorItems(sourceId, raw, keywordList)
+    const hits = await toMonitorItems(sourceId, raw, keywordList)
     if (!dryRun) {
       const supabase = getAdminSupabase()
       await upsertHits(supabase, hits)
@@ -157,22 +183,36 @@ export async function runMonitor(options = {}) {
 
   if (dryRun) {
     logger.log?.('monitor: dry-run（Supabase への保存なし）')
+  } else {
+    try {
+      const supabase = getAdminSupabase()
+      const disabledRemoved = await purgeDisabledMonitorSources(supabase)
+      const cleaned = await purgeInvalidMonitorHits(supabase)
+      if (disabledRemoved > 0 || cleaned > 0) {
+        logger.log?.(`monitor: クリーンアップ ${disabledRemoved + cleaned} 件削除（無効ソース=${disabledRemoved}）`)
+      }
+    } catch (err) {
+      logger.warn?.('monitor: クリーンアップ失敗:', err instanceof Error ? err.message : err)
+    }
   }
 
-  const regularResults = await Promise.all(
-    regularPending.map(async ([id, fn]) => {
-      logger.log?.(`▶ ${id}`)
-      const result = await runSource(id, fn, MONITOR_KEYWORDS, dryRun)
-      if (result.skipped) {
-        logger.log?.(`  skip: ${result.reason}`)
-      } else if (result.error) {
-        logger.error?.(`  ✗ ${typeof result.error === 'string' ? result.error : JSON.stringify(result.error)}`)
-      } else {
-        logger.log?.(`  ✓ ${result.hits} 件保存`)
-      }
-      return result
-    }),
-  )
+  const regularResults = []
+  for (const [id, fn, keywordList = MONITOR_KEYWORDS] of regularPending) {
+    logger.log?.(`▶ ${id}`)
+    const result = await runSource(id, fn, keywordList, dryRun)
+    if (result.skipped) {
+      logger.log?.(`  skip: ${result.reason}`)
+    } else if (result.error) {
+      const errMsg =
+        typeof result.error === 'string'
+          ? result.error
+          : result.error?.message ?? JSON.stringify(result.error)
+      logger.error?.(`  ✗ ${errMsg}`)
+    } else {
+      logger.log?.(`  ✓ ${result.hits} 件保存`)
+    }
+    regularResults.push(result)
+  }
 
   const playwrightResults =
     playwrightPending.length > 0
@@ -182,5 +222,21 @@ export async function runMonitor(options = {}) {
   const results = [...regularResults, ...playwrightResults]
   const saved = results.reduce((n, r) => n + (r.hits ?? 0), 0)
   const errors = results.filter((r) => r.error)
+
+  if (!dryRun) {
+    try {
+      const supabase = getAdminSupabase()
+      await closeExpiredEvents(supabase, logger)
+      const purged = await purgeNonTokaiEvents(supabase, logger)
+      const recheck = await recheckOpenEventsFromSources(supabase, { logger })
+      const eventResult = await processMonitorHitsToEvents(supabase, { logger })
+      logger.log?.(
+        `monitor: events ${eventResult.published}/${eventResult.processed} 件保存（2段AI再試行 ${eventResult.retried ?? 0}）/ 東海外除外 ${purged} / URL再チェック ${recheck.closed} 件終了`,
+      )
+    } catch (err) {
+      logger.warn?.('monitor: events pipeline failed:', err instanceof Error ? err.message : err)
+    }
+  }
+
   return { saved, results, errors, sourceCount: results.length }
 }

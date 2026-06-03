@@ -1,4 +1,5 @@
 import { AREAS, GENRES } from '../data/mockRecruitments'
+import { filterActiveRecruitments } from './recruitmentStatus'
 import type { Recruitment, RecruitmentFilters } from '../types'
 
 export { AREAS, GENRES }
@@ -8,7 +9,7 @@ export function filterRecruitments(
   filters: RecruitmentFilters,
 ): Recruitment[] {
   const search = filters.search.trim().toLowerCase()
-  return recruitments.filter((r) => {
+  return filterActiveRecruitments(recruitments).filter((r) => {
     const areaMatch = filters.area === 'すべて' || r.area === filters.area
     const genreMatch = filters.genre === 'すべて' || r.genre === filters.genre
     const searchMatch =
