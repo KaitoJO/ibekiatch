@@ -148,7 +148,11 @@ export async function runEventsPipeline(logger = console) {
   const eventResult = await processMonitorHitsToEvents(supabase, { logger })
   const sk = eventResult.skipped ?? {}
   const eventSkipped =
-    (sk.pastYear ?? 0) + (sk.pastDate ?? 0) + (sk.area ?? 0) + (sk.notRecruitment ?? 0)
+    (sk.pastYear ?? 0) +
+    (sk.pastDate ?? 0) +
+    (sk.area ?? 0) +
+    (sk.notRecruitment ?? 0) +
+    (sk.lowScore ?? 0)
 
   logger.log?.(
     `monitor: events ${eventResult.published}/${eventResult.processed} 件保存 / skip ${eventSkipped} / 東海外 ${purged} / URL再チェック ${recheck.closed}`,

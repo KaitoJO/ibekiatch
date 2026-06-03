@@ -1,21 +1,20 @@
-import {
-  structureEventWithTieredAi,
-  shouldPublishEvent,
-} from './eventStructuring.mjs'
+import { structureEventWithTieredAi } from './eventStructuring.mjs'
 import { scoreRecruitmentText } from './keywordScoring.mjs'
 import { isClosedRecruitmentText, todayInJstDateKey } from './recruitmentStatus.mjs'
 import { shouldSkipBeforeAi } from './qualityScoring.mjs'
+import {
+  scoreEventSignals,
+  extractEventDate,
+  isExplicitRecruitment,
+  isSnsSourceType,
+  sourceTypeOf,
+  AI_GATE_SCORE_MIN,
+  NOTIFY_SCORE_MIN,
+} from './eventSignals.mjs'
 import { normalizeOrganizerKey, pickOrganizerLabel } from './organizerEntity.mjs'
 import { recheckOpenEventsFromSources } from './eventRecheck.mjs'
-import { isRecruitmentPost } from './urlUtils.mjs'
 import { resolveVenueAndPrefecture } from './prefectureMap.mjs'
-import {
-  resolveTokaiArea,
-  isTokaiRegionText,
-  MIE_LOCAL_SOURCE_IDS,
-  hitProcessingPriority,
-  getPublishConfidenceMin,
-} from './tokaiRegion.mjs'
+import { resolveTokaiArea, isTokaiRegionText, MIE_LOCAL_SOURCE_IDS, hitProcessingPriority } from './tokaiRegion.mjs'
 import { notifyNewEventPush } from '../../api/lib/webPushShared.mjs'
 import { isExcludedNewsSource } from './excludedSources.mjs'
 
@@ -60,6 +59,27 @@ function passesAreaCheck(hit, structured) {
   )
   if (tokai) return true
   return isTokaiRegionText(structured.title, structured.location, hit.snippet)
+}
+
+/** AI分析後の掲載可否（存在判定はルール/スコアが担当。ここは場所・地域・明確な無関係のみ） */
+const EXCLUDED_CATEGORIES = new Set(['無関係'])
+
+/** AI が「出店募集」と分類したカテゴリ（SNS の取りこぼし防止に使う肯定シグナル） */
+const RECRUITMENT_CATEGORIES = new Set([
+  'キッチンカー募集',
+  '露店募集',
+  'ハンドメイド出店募集',
+])
+
+function passesPublishRules(structured) {
+  const hasPlace =
+    Boolean(structured.location?.trim()) || Boolean(structured.area?.trim())
+  return (
+    structured.in_tokai === true &&
+    Boolean(structured.title?.trim()) &&
+    hasPlace &&
+    !EXCLUDED_CATEGORIES.has(structured.category)
+  )
 }
 
 function applyTokaiArea(structured, hit) {
@@ -188,8 +208,8 @@ export async function processMonitorHitsToEvents(supabase, { limit = BATCH_LIMIT
 
   let processed = 0
   let published = 0
-  let retried = 0
-  const skipped = { pastYear: 0, pastDate: 0, area: 0, notRecruitment: 0 }
+  const retried = 0
+  const skipped = { pastYear: 0, pastDate: 0, area: 0, notRecruitment: 0, lowScore: 0 }
 
   for (const hit of pending) {
     processed++
@@ -197,6 +217,14 @@ export async function processMonitorHitsToEvents(supabase, { limit = BATCH_LIMIT
       skipped.notRecruitment++
       continue
     }
+
+    // --- 1. 構造化（決定論的）: 開催日をルールで抽出 ---
+    const { eventDate: ruleEventDate, recruitStart, recruitEnd } = extractEventDate(
+      hit.title,
+      hit.snippet,
+    )
+
+    // --- 2. ルールフィルタ（AI前のハード除外） ---
     let keywordScore = scoreRecruitmentText(hit.title, hit.snippet)
     const recruitHint = /募集|移動販売|出店者|応募|マルシェ出店/.test(
       `${hit.title ?? ''}\n${hit.snippet ?? ''}`,
@@ -208,12 +236,25 @@ export async function processMonitorHitsToEvents(supabase, { limit = BATCH_LIMIT
     ) {
       keywordScore = 25
     }
-    if (keywordScore < 25) continue
-    if (isClosedRecruitmentText(hit.title, hit.snippet)) continue
-    if (shouldSkipBeforeAi(hit.title, hit.snippet)) continue
-
+    if (keywordScore < 25) {
+      skipped.notRecruitment++
+      continue
+    }
+    if (isClosedRecruitmentText(hit.title, hit.snippet)) {
+      skipped.notRecruitment++
+      continue
+    }
+    if (shouldSkipBeforeAi(hit.title, hit.snippet)) {
+      skipped.notRecruitment++
+      continue
+    }
     if (hasPastYearInText(hit.title, hit.snippet)) {
       skipped.pastYear++
+      continue
+    }
+    // 開催日が判明していて過去なら AI 前に除外（AIに頼らない日付判定）
+    if (isPastEventDate(ruleEventDate)) {
+      skipped.pastDate++
       continue
     }
 
@@ -226,13 +267,25 @@ export async function processMonitorHitsToEvents(supabase, { limit = BATCH_LIMIT
       continue
     }
 
-    try {
-      const recruitmentOk = await isRecruitmentPost(hit.title, hit.snippet, hit.source_id)
-      if (!recruitmentOk) {
-        skipped.notRecruitment++
-        continue
-      }
+    // --- 3. スコアリング（AI前・ルールベース） ---
+    const isSns = isSnsSourceType(sourceTypeOf(hit.source_id))
+    const explicit = isExplicitRecruitment(hit.title, hit.snippet)
+    const preScore = scoreEventSignals({
+      title: hit.title,
+      snippet: hit.snippet,
+      sourceId: hit.source_id,
+      eventDate: ruleEventDate,
+      applicationUrl: hit.url,
+      createdAt: hit.created_at,
+    })
+    // SNS と明確な募集は AI 分析へ回す（取りこぼし防止）。それ以外は低スコアで足切り。
+    if (preScore.score < AI_GATE_SCORE_MIN && !explicit && !isSns) {
+      skipped.lowScore++
+      continue
+    }
 
+    try {
+      // --- 4. AI分析（カテゴリ・場所・要約のみ。存在/日付判定はしない） ---
       const structured = await structureEventWithTieredAi(
         hit.title,
         hit.snippet,
@@ -242,32 +295,45 @@ export async function processMonitorHitsToEvents(supabase, { limit = BATCH_LIMIT
 
       applyTokaiArea(structured, hit)
 
+      // 開催日はルール抽出を優先（AIは欠損補完のみ）
+      if (ruleEventDate) structured.event_date = ruleEventDate
+      if (recruitStart && !structured.recruit_start) structured.recruit_start = recruitStart
+      if (recruitEnd && !structured.recruit_end) structured.recruit_end = recruitEnd
+
       if (!passesAreaCheck(hit, structured)) {
         skipped.area++
         continue
       }
-
       if (isPastEventDate(structured.event_date)) {
         skipped.pastDate++
         continue
       }
 
-      const minConf = getPublishConfidenceMin(hit.source_id, {
-        hitTitle: hit.title,
-        hitSnippet: hit.snippet,
+      // --- 5. 最終スコア（AI後に応募導線・確定日付を反映） ---
+      const finalScore = scoreEventSignals({
+        title: structured.title || hit.title,
+        snippet: hit.snippet,
+        sourceId: hit.source_id,
+        eventDate: structured.event_date,
+        applicationUrl: structured.application_url || hit.url,
+        createdAt: hit.created_at,
       })
-      if (structured.confidence >= minConf - 15 && structured.confidence < minConf) retried++
 
-      if (
-        !shouldPublishEvent(structured, hit.source_id, {
-          title: hit.title,
-          snippet: hit.snippet,
-        })
-      ) {
+      // --- 6. 通知（掲載）条件 ---
+      // 地域・場所ルールは必須。そのうえで以下のいずれかで掲載:
+      //   - スコア >= 70
+      //   - 明確な出店者募集フレーズ（決定論）
+      //   - SNS かつ AI が募集カテゴリと分類（取りこぼし防止）
+      const recruitmentConfirmed =
+        finalScore.score >= NOTIFY_SCORE_MIN ||
+        explicit ||
+        (isSns && RECRUITMENT_CATEGORIES.has(structured.category))
+      if (!recruitmentConfirmed || !passesPublishRules(structured)) {
+        skipped.lowScore++
         continue
       }
 
-      const row = eventRowFromHit(hit, structured, keywordScore)
+      const row = eventRowFromHit(hit, structured, finalScore.score)
 
       const { data: prior } = await supabase
         .from('events')
@@ -286,7 +352,9 @@ export async function processMonitorHitsToEvents(supabase, { limit = BATCH_LIMIT
         continue
       }
       published++
-      logger.log?.(`[events] ✓ ${structured.title.slice(0, 50)}`)
+      logger.log?.(
+        `[events] ✓ (${finalScore.score}) ${structured.title.slice(0, 44)} — ${finalScore.reasons.join(', ')}`,
+      )
 
       if (saved && !prior) {
         await notifyNewEventPush(supabase, saved, logger)
@@ -296,10 +364,11 @@ export async function processMonitorHitsToEvents(supabase, { limit = BATCH_LIMIT
     }
   }
 
-  const skipTotal = skipped.pastYear + skipped.pastDate + skipped.area + skipped.notRecruitment
+  const skipTotal =
+    skipped.pastYear + skipped.pastDate + skipped.area + skipped.notRecruitment + skipped.lowScore
   if (skipTotal > 0) {
     logger.log?.(
-      `[events] skipped ${skipTotal} (year=${skipped.pastYear} date=${skipped.pastDate} area=${skipped.area} ai=${skipped.notRecruitment})`,
+      `[events] skipped ${skipTotal} (year=${skipped.pastYear} date=${skipped.pastDate} area=${skipped.area} rule=${skipped.notRecruitment} score=${skipped.lowScore})`,
     )
   }
 

@@ -166,6 +166,8 @@ async function searchFallbackForSocial(page, keyword, {
         }),
       )
       .filter(Boolean)
+      // URL がプラットフォーム本来のドメインに一致するもののみ（Google News等のリダイレクトURLを除外）
+      .filter((it) => urlPattern.test(it.url))
 
   if (newsSiteDomain) {
     try {
@@ -251,10 +253,12 @@ async function scrapeX(page, keyword) {
             el.textContent?.trim() ??
             ''
           const link = container.querySelector('a[href*="/status/"]')?.getAttribute('href')
+          // nitter のリンクは /{user}/status/{id}#m 形式。ユーザー名を保持して x.com に変換する
           const postUrl = link
-            ? link.startsWith('http')
-              ? link.replace(/nitter\.[^/]+/, 'x.com')
-              : `https://x.com${link.replace(/^\/[^/]+/, '')}`
+            ? (link.startsWith('http')
+                ? link.replace(/nitter\.[^/]+/, 'x.com')
+                : `https://x.com${link}`
+              ).replace(/#m$/, '').replace(/\/(?:photo|video|analytics)\/\d+$/, '')
             : null
           if (text.length > 8) out.push({ text, url: postUrl, publishedAt: null })
         })

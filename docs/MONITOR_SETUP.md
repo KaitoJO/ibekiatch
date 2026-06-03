@@ -108,6 +108,27 @@ CRON_JOB_ORG_API_KEY=... npm run monitor:cron-sync-news
 
 **単体例:** `https://ibekiatch.vercel.app/api/cron/monitor?token=（.env参照）&source=kokuchiz`
 
+## AI収集パイプライン（構造化 → ルール → スコア → AI分析 → 通知）
+
+誤検知（過去イベント・開催レポート・無関係）を防ぐため、**存在判定・開催日判定・スコアリングはルールベース**で行い、**AI はカテゴリ分類・場所・要約などの分析のみ**を担当します（`scripts/monitor/eventsPipeline.mjs`）。
+
+1. **構造化（決定論）** — `extractEventDate()`（正規表現）で開催日を抽出。AIには頼らない
+2. **ルールフィルタ（AI前のハード除外）**
+   - 募集キーワード < 25（`keywordScoring.mjs`）
+   - 募集終了・**開催レポート/アーカイブ**（`recruitmentStatus.mjs` の `isReportOrArchive`）
+   - ミュージアムショップ等（`qualityScoring.shouldSkipBeforeAi`）
+   - 過去年・**開催日が過去**・東海4県外
+3. **スコアリング** — `eventSignals.scoreEventSignals()`：開催日+30 / 未来+30 / 公式+20 / 応募フォーム+20 / 明確な募集+20 / Instagram・X+10 / 開催レポート-100 / 過去開催-100 / 日時不明-30（SNSは減点なし）
+4. **AI分析** — `structureEventWithTieredAi()`（カテゴリ・場所・主催者・要約）。開催日はルール抽出を優先
+5. **通知（掲載）条件** — 地域・場所ルール必須。そのうえで次のいずれか:
+   - スコア >= `NOTIFY_SCORE_MIN`(70)
+   - **明確な出店者募集フレーズ**（`isExplicitRecruitment`、決定論）
+   - **SNS かつ AI が募集カテゴリと分類**（取りこぼし防止）
+
+### しきい値調整
+
+`scripts/monitor/eventSignals.mjs` の `NOTIFY_SCORE_MIN`（掲載）/ `AI_GATE_SCORE_MIN`（AI呼び出し前足切り）で精度⇔再現率を調整できます。SNS の明確な募集・AI分類済み募集は日付が無くても掲載されます。
+
 ## 関連ファイル
 
 - `scripts/monitor/cronBatches.mjs` — `CRON_BATCHES` 定義（13 batch）
