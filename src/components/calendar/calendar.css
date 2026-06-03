@@ -79,14 +79,66 @@
 }
 
 .calendar-day--has-event .calendar-day__dot {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: var(--color-primary);
 }
 
-.calendar-day--selected .calendar-day__dot {
+.calendar-status--considering {
+  background: #94a3b8;
+}
+
+.calendar-status--applying {
+  background: #f97316;
+}
+
+.calendar-status--confirmed {
+  background: #22c55e;
+}
+
+.calendar-day--selected .calendar-day__dot.calendar-status--considering,
+.calendar-day--selected .calendar-day__dot.calendar-status--applying,
+.calendar-day--selected .calendar-day__dot.calendar-status--confirmed {
   background: white;
+}
+
+.calendar-event-card {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  margin-bottom: 10px;
+  box-shadow: var(--shadow-sm);
+  border-left: 4px solid #94a3b8;
+}
+
+.calendar-event-card.calendar-status--applying {
+  border-left-color: #f97316;
+}
+
+.calendar-event-card.calendar-status--confirmed {
+  border-left-color: #22c55e;
+}
+
+.calendar-status-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  color: white;
+}
+
+.calendar-status-badge.calendar-status--considering {
+  background: #94a3b8;
+}
+
+.calendar-status-badge.calendar-status--applying {
+  background: #f97316;
+}
+
+.calendar-status-badge.calendar-status--confirmed {
+  background: #22c55e;
 }
 
 .calendar-events {
@@ -123,14 +175,6 @@
   font-size: 12px;
   color: var(--color-primary);
   margin: 0 0 12px;
-}
-
-.calendar-event-card {
-  background: var(--color-surface);
-  border-radius: var(--radius-lg);
-  padding: 16px;
-  margin-bottom: 10px;
-  box-shadow: var(--shadow-sm);
 }
 
 .calendar-event-card__title {

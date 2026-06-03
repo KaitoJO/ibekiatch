@@ -39,16 +39,18 @@ export const SUBSCRIPTION_PLANS = [
   {
     id: 'standard',
     name: 'スタンダード',
-    price: 1200,
-    priceLabel: '¥1,200/月',
+    price: 980,
+    priceLabel: '¥980/月',
+    priceNote: '早期予約価格（通常 ¥1,200/月）',
     features: ['全募集の閲覧', 'プッシュ通知', 'エリアフィルター'],
     recommended: true,
   },
   {
     id: 'premium',
     name: 'プレミアム',
-    price: 2980,
-    priceLabel: '¥2,980/月',
+    price: 2480,
+    priceLabel: '¥2,480/月',
+    priceNote: '早期予約価格（通常 ¥2,980/月）',
     features: ['スタンダードの全機能', '優先通知', '応募サポート', '出店確定時のX自動投稿'],
   },
 ] as const

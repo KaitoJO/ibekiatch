@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { resolveVenueAndPrefectureFields } from './prefectureResolve'
 import type {
   ApplicationRecord,
   CalendarEvent,
@@ -16,6 +17,9 @@ import type {
   Profile,
   ProfileForm,
   Recruitment,
+  MyEventRecord,
+  MyEventStatus,
+  ViewingHistoryRecord,
 } from '../types'
 
 type RecruitmentRow = {
@@ -81,6 +85,37 @@ function recruitmentFromRow(row: RecruitmentRow): Recruitment {
   }
 }
 
+type MyEventRow = {
+  id: string
+  user_id: string
+  event_id: string | null
+  recruitment_id: string | null
+  ref_key: string
+  event_date: string | null
+  event_title: string
+  event_location: string | null
+  event_area: string | null
+  status: string
+  created_at: string
+}
+
+function myEventFromRow(row: MyEventRow): MyEventRecord {
+  const status = row.status as MyEventStatus
+  return {
+    id: row.id,
+    eventId: row.event_id,
+    recruitmentId: row.recruitment_id,
+    refKey: row.ref_key,
+    eventDate: row.event_date,
+    eventTitle: row.event_title,
+    eventLocation: row.event_location ?? '',
+    area: row.event_area ?? '',
+    status:
+      status === '応募中' || status === '出店確定' ? status : '応募中',
+    createdAt: row.created_at,
+  }
+}
+
 function normalizeSubscriptionStatus(value: string | null | undefined): Profile['subscriptionStatus'] {
   if (
     value === 'active' ||
@@ -120,6 +155,8 @@ export type WorkspaceData = {
   eventChatMessages: EventChatMessage[]
   monitorHits: MonitorHit[]
   collectedEvents: CollectedEvent[]
+  myEvents: MyEventRecord[]
+  viewingHistory: ViewingHistoryRecord[]
 }
 
 const EVENTS_LIMIT = 100
@@ -136,6 +173,7 @@ type EventRow = {
   organizer: string
   location: string
   area: string
+  prefecture: string
   event_date: string | null
   recruit_start: string | null
   recruit_end: string | null
@@ -150,6 +188,12 @@ type EventRow = {
 }
 
 function eventFromRow(row: EventRow): CollectedEvent {
+  const { venue, prefecture } = resolveVenueAndPrefectureFields(
+    row.location,
+    row.prefecture ?? '',
+    row.area,
+    row.title,
+  )
   return {
     id: row.id,
     monitorHitId: row.monitor_hit_id,
@@ -158,8 +202,9 @@ function eventFromRow(row: EventRow): CollectedEvent {
     origin: row.origin,
     title: row.title,
     organizer: row.organizer,
-    location: row.location,
-    area: row.area,
+    location: venue || row.location,
+    area: prefecture || row.area,
+    prefecture,
     eventDate: row.event_date,
     recruitStart: row.recruit_start,
     recruitEnd: row.recruit_end,
@@ -292,7 +337,7 @@ export async function fetchWorkspace(
     eventsQuery = eventsQuery.eq('status', 'open')
   }
 
-  const [recruitmentsRes, applicationsRes, profileRes, notificationsRes, postsRes, reviewsRes, eventReviewsRes, chatRes, monitorHitsRes, eventsRes] =
+  const [recruitmentsRes, applicationsRes, profileRes, notificationsRes, postsRes, reviewsRes, eventReviewsRes, chatRes, monitorHitsRes, eventsRes, myEventsRes, viewingHistoryRes] =
     await Promise.all([
       supabase
         .from('recruitments')
@@ -333,6 +378,17 @@ export async function fetchWorkspace(
         .order('created_at', { ascending: false })
         .limit(monitorHitsLimit),
       eventsQuery,
+      supabase
+        .from('my_events')
+        .select('*')
+        .eq('user_id', userId)
+        .order('updated_at', { ascending: false }),
+      supabase
+        .from('viewing_history')
+        .select('id, event_id, event_title, viewed_at')
+        .eq('user_id', userId)
+        .order('viewed_at', { ascending: false })
+        .limit(100),
     ])
 
   if (recruitmentsRes.error) throw recruitmentsRes.error
@@ -434,33 +490,69 @@ export async function fetchWorkspace(
     collectedEvents: (eventsRes.error ? [] : (eventsRes.data ?? [])).map((row) =>
       eventFromRow(row as EventRow),
     ),
+    myEvents: (myEventsRes.error ? [] : (myEventsRes.data ?? [])).map((row) =>
+      myEventFromRow(row as MyEventRow),
+    ),
+    viewingHistory: (viewingHistoryRes.error ? [] : (viewingHistoryRes.data ?? [])).map((row) => ({
+      id: row.id,
+      eventId: row.event_id,
+      eventTitle: row.event_title,
+      viewedAt: row.viewed_at,
+    })),
   }
 }
 
 export function buildCalendarEvents(
   applications: ApplicationRecord[],
   recruitments: Recruitment[],
+  myEvents: MyEventRecord[] = [],
 ): CalendarEvent[] {
   const recruitmentMap = new Map(recruitments.map((r) => [r.id, r]))
-  return applications
+  const seenRefKeys = new Set<string>()
+
+  const fromApplications: CalendarEvent[] = applications
     .filter((app) => app.status === 'accepted')
-    .map((app) => {
+    .flatMap((app) => {
       const r = recruitmentMap.get(app.recruitmentId)
-      if (!r) return null
-      return {
-        id: app.id,
-        recruitmentId: r.id,
-        title: r.title,
-        venue: r.venue,
-        area: r.area,
-        date: r.date,
-        timeSlot: r.timeSlot,
-        status: app.status,
-        fee: r.fee,
-      }
+      if (!r) return []
+      seenRefKeys.add(`recruitment:${r.id}`)
+      return [
+        {
+          id: app.id,
+          recruitmentId: r.id,
+          title: r.title,
+          venue: r.venue,
+          area: r.area,
+          date: r.date,
+          timeSlot: r.timeSlot,
+          fee: r.fee,
+          myEventStatus: '出店確定' as MyEventStatus,
+          source: 'application' as const,
+        },
+      ]
     })
-    .filter((e): e is CalendarEvent => e != null)
-    .sort((a, b) => a.date.localeCompare(b.date))
+
+  const fromMyEvents: CalendarEvent[] = myEvents
+    .filter(
+      (me) =>
+        me.eventDate &&
+        !seenRefKeys.has(me.refKey) &&
+        (me.status === '応募中' || me.status === '出店確定'),
+    )
+    .map((me) => ({
+      id: me.id,
+      recruitmentId: me.recruitmentId,
+      title: me.eventTitle,
+      venue: me.eventLocation || '—',
+      area: me.area || '',
+      date: me.eventDate!,
+      timeSlot: '',
+      fee: 0,
+      myEventStatus: me.status,
+      source: 'my_event' as const,
+    }))
+
+  return [...fromApplications, ...fromMyEvents].sort((a, b) => a.date.localeCompare(b.date))
 }
 
 export async function upsertProfile(
@@ -628,6 +720,111 @@ export async function insertCommunityNotification(
     body,
     related_id: relatedId ?? null,
   })
+  if (error) throw error
+}
+
+export type UpsertMyEventInput = {
+  refKey: string
+  eventId: string | null
+  recruitmentId: string | null
+  eventDate: string | null
+  eventTitle: string
+  eventLocation: string
+  area: string
+}
+
+export async function insertViewingHistory(
+  supabase: SupabaseClient,
+  userId: string,
+  input: { eventId: string; eventTitle: string },
+): Promise<ViewingHistoryRecord> {
+  const { data, error } = await supabase
+    .from('viewing_history')
+    .insert({
+      user_id: userId,
+      event_id: input.eventId,
+      event_title: input.eventTitle,
+    })
+    .select('id, event_id, event_title, viewed_at')
+    .single()
+
+  if (error) throw error
+  return {
+    id: data.id,
+    eventId: data.event_id,
+    eventTitle: data.event_title,
+    viewedAt: data.viewed_at,
+  }
+}
+
+export async function upsertMyEventApplied(
+  supabase: SupabaseClient,
+  userId: string,
+  input: UpsertMyEventInput,
+): Promise<MyEventRecord> {
+  const { data: existing } = await supabase
+    .from('my_events')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('ref_key', input.refKey)
+    .maybeSingle()
+
+  if (existing?.status === '出店確定') {
+    return myEventFromRow(existing as MyEventRow)
+  }
+
+  const row = {
+    user_id: userId,
+    ref_key: input.refKey,
+    event_id: input.eventId,
+    recruitment_id: input.recruitmentId,
+    event_date: input.eventDate,
+    event_title: input.eventTitle,
+    event_location: input.eventLocation,
+    event_area: input.area,
+    status: '応募中',
+    updated_at: new Date().toISOString(),
+  }
+
+  const { data, error } = await supabase
+    .from('my_events')
+    .upsert(row, { onConflict: 'user_id,ref_key' })
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return myEventFromRow(data as MyEventRow)
+}
+
+export async function updateMyEventStatus(
+  supabase: SupabaseClient,
+  userId: string,
+  myEventId: string,
+  status: MyEventStatus,
+): Promise<MyEventRecord> {
+  const { data, error } = await supabase
+    .from('my_events')
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq('id', myEventId)
+    .eq('user_id', userId)
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return myEventFromRow(data as MyEventRow)
+}
+
+export async function deleteMyEvent(
+  supabase: SupabaseClient,
+  userId: string,
+  myEventId: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('my_events')
+    .delete()
+    .eq('id', myEventId)
+    .eq('user_id', userId)
+
   if (error) throw error
 }
 

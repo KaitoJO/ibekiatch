@@ -1,32 +1,31 @@
-import { ExternalLink, MapPin, Sparkles } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { ExternalLink, MapPin, Sparkles, X } from 'lucide-react'
 import { formatDate } from '../../lib/recruitmentUtils'
+import { getSourceLabel } from '../../lib/sourceTheme'
+import { formatPrefectureDisplay, formatVenueDisplay } from '../../lib/prefectureResolve'
+import {
+  clearPendingApplyPrompt,
+  getPendingApplyPrompt,
+  resolveMyEventRefKey,
+  setPendingApplyPrompt,
+} from '../../lib/myEvents'
 import { ScreenHeader } from '../shared/ScreenHeader'
-import type { DisplayEvent } from '../../types'
+import type { DisplayEvent, MyEventRecord } from '../../types'
 import '../shared/shared.css'
 import './home.css'
-
-const SOURCE_LABELS: Record<string, string> = {
-  kokuchiz: 'こくちーず',
-  peatix: 'Peatix',
-  twitter: 'X',
-  instagram: 'Instagram',
-  facebook: 'Facebook',
-  mie_cities: '市役所HP',
-  shokokai: '商工会',
-  michinoeki: '道の駅',
-  eventbank: 'イベントバンク',
-  mie_tourism: '観光協会',
-  ja_mie: 'JA三重',
-}
 
 type Props = {
   event: DisplayEvent
   applied: boolean
   applyBusy: boolean
   confirmBusy?: boolean
+  isLoggedIn: boolean
+  myEvent: MyEventRecord | null
   onBack: () => void
   onApply: () => void
   onConfirmShop?: () => void
+  onRecordView: (event: DisplayEvent) => Promise<void>
+  onMarkMyEventApplied: (event: DisplayEvent) => Promise<MyEventRecord | null>
 }
 
 export function EventDetailScreen({
@@ -34,16 +33,90 @@ export function EventDetailScreen({
   applied,
   applyBusy,
   confirmBusy = false,
+  isLoggedIn,
+  myEvent,
   onBack,
   onApply,
   onConfirmShop,
+  onRecordView,
+  onMarkMyEventApplied,
 }: Props) {
   const isHost = event.origin === 'host'
   const isFull = isHost && event.maxApplicants > 0 && event.applicants >= event.maxApplicants
   const progress =
     isHost && event.maxApplicants > 0 ? (event.applicants / event.maxApplicants) * 100 : 0
-  const sourceLabel = event.sourceId ? SOURCE_LABELS[event.sourceId] ?? event.sourceId : null
+  const sourceLabel = getSourceLabel(event.sourceId)
   const externalUrl = event.applicationUrl || event.sourceUrl
+  const venueLabel = formatVenueDisplay(event.location, event.prefecture, event.area, event.title) || '場所要確認'
+  const prefectureLabel = formatPrefectureDisplay(event.prefecture, event.area, event.location, event.title)
+  const eventRefKey = resolveMyEventRefKey(event)
+
+  const [localMyEvent, setLocalMyEvent] = useState<MyEventRecord | null>(myEvent)
+  const [applyPromptOpen, setApplyPromptOpen] = useState(false)
+  const [applyPromptBusy, setApplyPromptBusy] = useState(false)
+  const recordedRef = useRef(false)
+  const wentExternalRef = useRef(false)
+
+  useEffect(() => {
+    setLocalMyEvent(myEvent)
+  }, [myEvent])
+
+  useEffect(() => {
+    if (!isLoggedIn || recordedRef.current) return
+    recordedRef.current = true
+    void onRecordView(event)
+  }, [event, isLoggedIn, onRecordView])
+
+  const maybeShowApplyPrompt = useCallback(() => {
+    const pendingRef = getPendingApplyPrompt()
+    if (!pendingRef || !wentExternalRef.current) return
+    if (pendingRef !== eventRefKey) return
+    setApplyPromptOpen(true)
+    clearPendingApplyPrompt()
+    wentExternalRef.current = false
+  }, [eventRefKey])
+
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        maybeShowApplyPrompt()
+      }
+    }
+    const onFocus = () => {
+      maybeShowApplyPrompt()
+    }
+
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onFocus)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [maybeShowApplyPrompt])
+
+  const openExternalSite = () => {
+    if (!externalUrl) return
+    setPendingApplyPrompt(eventRefKey)
+    wentExternalRef.current = true
+    window.open(externalUrl, '_blank', 'noopener,noreferrer')
+  }
+
+  const handleApplyPromptYes = async () => {
+    setApplyPromptBusy(true)
+    try {
+      const record = await onMarkMyEventApplied(event)
+      if (record) setLocalMyEvent(record)
+      setApplyPromptOpen(false)
+    } finally {
+      setApplyPromptBusy(false)
+    }
+  }
+
+  const handleApplyPromptDismiss = () => {
+    clearPendingApplyPrompt()
+    wentExternalRef.current = false
+    setApplyPromptOpen(false)
+  }
 
   const ctaLabel = applyBusy
     ? '送信中…'
@@ -53,15 +126,22 @@ export function EventDetailScreen({
         ? '満枠'
         : isHost
           ? '応募する'
-          : '応募ページを開く'
+          : '元サイトを見る'
 
   const handleCta = () => {
     if (isHost) {
       if (!applied && !isFull) onApply()
       return
     }
-    if (externalUrl) window.open(externalUrl, '_blank', 'noopener,noreferrer')
+    openExternalSite()
   }
+
+  const statusLabel =
+    localMyEvent?.status === '応募中'
+      ? '応募中'
+      : localMyEvent?.status === '出店確定'
+        ? '出店確定'
+        : null
 
   return (
     <div className="screen detail-screen">
@@ -74,6 +154,9 @@ export function EventDetailScreen({
           )}
           {event.isUrgent && (
             <span className="recruitment-card__badge recruitment-card__badge--urgent">急募</span>
+          )}
+          {statusLabel && (
+            <span className="recruitment-card__badge detail-status-badge">{statusLabel}</span>
           )}
           {!isHost && (
             <span className="recruitment-card__badge recruitment-card__badge--ai">
@@ -98,9 +181,13 @@ export function EventDetailScreen({
           <h3 className="detail-section__label">会場・場所</h3>
           <p className="detail-section__text">
             <MapPin size={16} style={{ verticalAlign: -3, marginRight: 4 }} />
-            {event.location}
-            <br />
-            <strong>{event.area}</strong>
+            {venueLabel}
+            {prefectureLabel && (
+              <>
+                <br />
+                <strong>{prefectureLabel}</strong>
+              </>
+            )}
           </p>
         </section>
 
@@ -141,8 +228,12 @@ export function EventDetailScreen({
             href={externalUrl}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={(e) => {
+              e.preventDefault()
+              openExternalSite()
+            }}
           >
-            {isHost ? '元サイトを見る' : '応募・詳細ページを開く'}
+            元サイトを見る
             <ExternalLink size={16} />
           </a>
         )}
@@ -183,6 +274,47 @@ export function EventDetailScreen({
           </button>
         )}
       </div>
+
+      {applyPromptOpen && (
+        <div className="apply-prompt-overlay" role="presentation">
+          <div className="apply-prompt" role="dialog" aria-labelledby="apply-prompt-title">
+            <button
+              type="button"
+              className="apply-prompt__close"
+              aria-label="閉じる"
+              disabled={applyPromptBusy}
+              onClick={handleApplyPromptDismiss}
+            >
+              <X size={20} />
+            </button>
+            <h2 id="apply-prompt-title" className="apply-prompt__title">
+              応募しましたか？
+            </h2>
+            <p className="apply-prompt__body">
+              「{event.title.slice(0, 40)}
+              {event.title.length > 40 ? '…' : ''}」の外部サイトでの応募状況を教えてください。
+            </p>
+            <div className="apply-prompt__actions">
+              <button
+                type="button"
+                className="apply-prompt__btn apply-prompt__btn--primary"
+                disabled={applyPromptBusy}
+                onClick={() => void handleApplyPromptYes()}
+              >
+                はい・応募した
+              </button>
+              <button
+                type="button"
+                className="apply-prompt__btn apply-prompt__btn--text"
+                disabled={applyPromptBusy}
+                onClick={handleApplyPromptDismiss}
+              >
+                いいえ・やめた
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

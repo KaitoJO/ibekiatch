@@ -1,11 +1,19 @@
 import { useEffect, useState } from 'react'
+import { Bell, BellOff, Clock } from 'lucide-react'
 import { AREAS } from '../../data/mockRecruitments'
 import { hasPaidAccess, planRank, startCheckout, openBillingPortal, syncBillingFromStripe } from '../../lib/billing'
 import { SUBSCRIPTION_PLANS } from '../../lib/brand'
 import { formatError } from '../../lib/formatError'
 import { useAuth } from '../../hooks/useAuth'
 import { formatDateTime, formatFee } from '../../lib/recruitmentUtils'
+import {
+  getPushSubscriptionState,
+  isWebPushSupported,
+  subscribeWebPush,
+  unsubscribeWebPush,
+} from '../../lib/webPush'
 import { ScreenHeader } from '../shared/ScreenHeader'
+import { ViewingHistoryScreen } from './ViewingHistoryScreen'
 import '../shared/shared.css'
 import './profile.css'
 
@@ -37,6 +45,19 @@ export function ProfileScreen() {
   const [billingBusy, setBillingBusy] = useState<string | null>(null)
   const [confirmBusyId, setConfirmBusyId] = useState<string | null>(null)
   const [message, setMessage] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+  const [pushState, setPushState] = useState<'unsupported' | 'denied' | 'prompt' | 'subscribed'>('prompt')
+  const [pushBusy, setPushBusy] = useState(false)
+  const [historyOpen, setHistoryOpen] = useState(false)
+
+  const pushSupported = isWebPushSupported()
+
+  useEffect(() => {
+    if (!pushSupported) {
+      setPushState('unsupported')
+      return
+    }
+    void getPushSubscriptionState().then(setPushState)
+  }, [pushSupported, session?.access_token])
 
   useEffect(() => {
     setDisplayName(profile?.displayName ?? '')
@@ -115,12 +136,51 @@ export function ProfileScreen() {
     }
   }
 
+  const onTogglePush = async () => {
+    if (!accessToken || !pushSupported) return
+    setMessage(null)
+    setPushBusy(true)
+    try {
+      if (pushState === 'subscribed') {
+        await unsubscribeWebPush(accessToken)
+        setPushState('prompt')
+        setMessage({ type: 'ok', text: 'プッシュ通知をオフにしました。' })
+      } else {
+        await subscribeWebPush(accessToken)
+        setPushState('subscribed')
+        setMessage({ type: 'ok', text: '新着イベントのプッシュ通知をオンにしました。' })
+      }
+    } catch (err) {
+      setMessage({ type: 'err', text: formatError(err) })
+      setPushState(await getPushSubscriptionState())
+    } finally {
+      setPushBusy(false)
+    }
+  }
+
   const displayLabel =
     profile?.businessName || profile?.displayName || session?.user?.email?.split('@')[0] || 'ゲスト'
 
+  if (historyOpen) {
+    return <ViewingHistoryScreen onBack={() => setHistoryOpen(false)} />
+  }
+
   return (
     <div className="profile-screen screen">
-      <ScreenHeader title="マイページ" gradient />
+      <ScreenHeader
+        title="マイページ"
+        gradient
+        headerRight={
+          <button
+            type="button"
+            className="screen-header__icon-btn"
+            aria-label="閲覧履歴"
+            onClick={() => setHistoryOpen(true)}
+          >
+            <Clock size={20} />
+          </button>
+        }
+      />
 
       <header className="profile-header profile-header--compact">
         <div className="profile-header__avatar" aria-hidden>🚚</div>
@@ -174,6 +234,9 @@ export function ProfileScreen() {
                   <div className="profile-plan__head">
                     <h3 className="profile-plan__name">{plan.name}</h3>
                     <p className="profile-plan__price">{plan.priceLabel}</p>
+                    {'priceNote' in plan && plan.priceNote ? (
+                      <p className="profile-plan__note">{plan.priceNote}</p>
+                    ) : null}
                   </div>
                   <ul className="profile-plan__features">
                     {plan.features.map((f) => (
@@ -215,6 +278,34 @@ export function ProfileScreen() {
               onClick={() => void onManageBilling()}
             >
               {billingBusy === 'portal' ? '読み込み中…' : 'お支払い・解約の管理（Stripe）'}
+            </button>
+          )}
+        </section>
+
+        <section className="profile-card">
+          <h2 className="profile-card__title">プッシュ通知</h2>
+          <p className="profile-push-intro">
+            新着イベントが保存されたタイミングで、イベント名・場所・締切日をお知らせします（PWA / Web Push）。
+          </p>
+          {!pushSupported ? (
+            <p className="profile-push-hint">このブラウザは Web Push に未対応です。</p>
+          ) : pushState === 'denied' ? (
+            <p className="profile-push-hint">
+              通知がブロックされています。ブラウザの設定から ibekiatch.vercel.app の通知を許可してください。
+            </p>
+          ) : (
+            <button
+              type="button"
+              className={`profile-push-btn ${pushState === 'subscribed' ? 'profile-push-btn--on' : ''}`}
+              disabled={pushBusy || !accessToken}
+              onClick={() => void onTogglePush()}
+            >
+              {pushState === 'subscribed' ? <BellOff size={16} aria-hidden /> : <Bell size={16} aria-hidden />}
+              {pushBusy
+                ? '設定中…'
+                : pushState === 'subscribed'
+                  ? '通知をオフにする'
+                  : '新着通知をオンにする'}
             </button>
           )}
         </section>

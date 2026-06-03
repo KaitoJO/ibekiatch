@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
 import { Share2 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
+import { calendarStatusClass, myEventStatusLabel } from '../../lib/myEvents'
+import type { MyEventStatus } from '../../types'
 import {
   dateKey,
   formatDate,
@@ -14,6 +16,11 @@ import '../shared/shared.css'
 import './calendar.css'
 
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土']
+
+const STATUS_PRIORITY: Record<MyEventStatus, number> = {
+  応募中: 1,
+  出店確定: 2,
+}
 
 function buildShareText(events: { title: string; venue: string; date: string; timeSlot: string }[]): string {
   if (events.length === 0) return ''
@@ -29,10 +36,24 @@ export function CalendarScreen() {
   const [selectedDay, setSelectedDay] = useState<number | null>(new Date().getDate())
   const [shareMessage, setShareMessage] = useState<string | null>(null)
 
+  const dayStatusMap = useMemo(() => {
+    const map = new Map<string, MyEventStatus>()
+    for (const e of calendarEvents) {
+      if (!e.date) continue
+      const cur = map.get(e.date)
+      if (!cur || STATUS_PRIORITY[e.myEventStatus] > STATUS_PRIORITY[cur]) {
+        map.set(e.date, e.myEventStatus)
+      }
+    }
+    return map
+  }, [calendarEvents])
+
   const days = useMemo(() => getCalendarDays(yearMonth), [yearMonth])
   const eventDates = useMemo(() => {
     const set = new Set<string>()
-    for (const e of calendarEvents) set.add(e.date)
+    for (const e of calendarEvents) {
+      if (e.date) set.add(e.date)
+    }
     return set
   }, [calendarEvents])
 
@@ -102,6 +123,7 @@ export function CalendarScreen() {
           }
           const key = dateKey(yearMonth, day)
           const hasEvent = eventDates.has(key)
+          const dayStatus = dayStatusMap.get(key)
           const isToday = isTodayMonth && day === today.getDate()
           const isSelected = selectedDay === day
           return (
@@ -115,7 +137,9 @@ export function CalendarScreen() {
               }}
             >
               {day}
-              {hasEvent && <span className="calendar-day__dot" />}
+              {hasEvent && dayStatus && (
+                <span className={`calendar-day__dot ${calendarStatusClass(dayStatus)}`} />
+              )}
             </button>
           )
         })}
@@ -140,22 +164,30 @@ export function CalendarScreen() {
           <div className="empty-block">
             <div className="empty-block__icon">📅</div>
             <p className="empty-block__title">予定がありません</p>
-            <p>応募後「出店確定」を押すと、確定した出店日がここに表示されます。</p>
+            <p>外部サイトで応募すると「応募中」としてカレンダーに表示されます。</p>
           </div>
         ) : (
           dayEvents.map((event) => (
-            <article key={event.id} className="calendar-event-card">
+            <article
+              key={event.id}
+              className={`calendar-event-card ${calendarStatusClass(event.myEventStatus)}`}
+            >
               <h3 className="calendar-event-card__title">{event.title}</h3>
               <p className="calendar-event-card__meta">
                 {event.venue}
                 <br />
-                {event.area} · {event.timeSlot}
+                {event.area}
+                {event.timeSlot ? ` · ${event.timeSlot}` : ''}
                 <br />
                 出店日: {formatDate(event.date)}
               </p>
               <div className="calendar-event-card__footer">
-                <span className="status-badge status-badge--accepted">出店確定</span>
-                <span className="calendar-event-card__fee">{formatFee(event.fee, true)}</span>
+                <span className={`calendar-status-badge ${calendarStatusClass(event.myEventStatus)}`}>
+                  {myEventStatusLabel(event.myEventStatus)}
+                </span>
+                {event.fee > 0 && (
+                  <span className="calendar-event-card__fee">{formatFee(event.fee, true)}</span>
+                )}
               </div>
             </article>
           ))

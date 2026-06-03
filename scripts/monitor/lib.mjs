@@ -20,6 +20,7 @@ import {
 import { isActiveMonitorHit, isClosedRecruitmentText } from './recruitmentStatus.mjs'
 import { passesKeywordScore } from './keywordScoring.mjs'
 import { shouldSkipBeforeAi } from './qualityScoring.mjs'
+import { isExcludedNewsSource, EXCLUDED_NEWS_SOURCE_IDS } from './excludedSources.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 
@@ -119,6 +120,7 @@ export async function toMonitorItems(sourceId, rawItems, keywords = MONITOR_KEYW
     if (matched.length === 0) continue
     if (!passesKeywordScore(sanitized.title, sanitized.snippet)) continue
     if (shouldSkipBeforeAi(sanitized.title, sanitized.snippet)) continue
+    if (isExcludedNewsSource(sourceId)) continue
 
     candidates.push({
       source_id: sourceId,
@@ -132,7 +134,9 @@ export async function toMonitorItems(sourceId, rawItems, keywords = MONITOR_KEYW
     })
   }
 
-  if (candidates.length === 0) return []
+  if (candidates.length === 0) {
+    return { hits: [], stats: { processed: 0, closedSkipped: 0, aiSkipped: 0 } }
+  }
 
   const openCandidates = candidates.filter(
     (c) => !isClosedRecruitmentText(c.title, c.snippet),
@@ -141,15 +145,23 @@ export async function toMonitorItems(sourceId, rawItems, keywords = MONITOR_KEYW
   if (closedSkipped > 0) {
     console.log(`[${sourceId}] 募集終了除外: ${closedSkipped} 件`)
   }
-  if (openCandidates.length === 0) return []
+  if (openCandidates.length === 0) {
+    return {
+      hits: [],
+      stats: { processed: candidates.length, closedSkipped, aiSkipped: 0 },
+    }
+  }
 
   const before = openCandidates.length
   const filtered = await filterRecruitmentPosts(openCandidates, sourceId)
-  const rejected = before - filtered.length
-  if (rejected > 0) {
+  const aiSkipped = before - filtered.length
+  if (aiSkipped > 0) {
     console.log(`[${sourceId}] AI判定: ${filtered.length}/${before} 件を募集として採用`)
   }
-  return filtered
+  return {
+    hits: filtered,
+    stats: { processed: candidates.length, closedSkipped, aiSkipped },
+  }
 }
 
 export function getAdminSupabase() {
@@ -216,7 +228,7 @@ export async function purgeMonitorSource(supabase, sourceId) {
 
 export async function purgeDisabledMonitorSources(supabase) {
   let total = 0
-  for (const sourceId of ['threads', 'facebook']) {
+  for (const sourceId of ['threads', 'facebook', ...EXCLUDED_NEWS_SOURCE_IDS]) {
     total += await purgeMonitorSource(supabase, sourceId)
   }
   return total
@@ -238,6 +250,7 @@ export async function purgeInvalidMonitorHits(supabase) {
 
     const toDelete = data.filter((row) => {
       if (row.source_id === 'threads' || row.source_id === 'facebook') return true
+      if (isExcludedNewsSource(row.source_id)) return true
       if (!sanitizeMonitorItem(row)) return true
       return !isActiveMonitorHit(row)
     })

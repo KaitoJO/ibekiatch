@@ -1,10 +1,9 @@
 import type { CollectedEvent, DisplayEvent, Recruitment } from '../types'
+import { getEventHeroBackground } from './sourceTheme'
+import { isTokaiDisplayEvent } from './tokaiRegion'
+import { resolvePrefectureFromText, resolveVenueAndPrefectureFields } from './prefectureResolve'
 import { formatFee } from './recruitmentUtils'
 import { todayInJstDateKey } from './recruitmentStatus'
-
-const TOKAI_FILTER_KEYWORDS = [
-  '愛知', '岐阜', '三重', '静岡', '名古屋', '伊勢', '津', '四日市', '松阪', '鈴鹿',
-] as const
 
 /** 終了済み（出店日が今日より前）を除外 */
 export function isExpiredEventDate(eventDate: string | null): boolean {
@@ -12,28 +11,20 @@ export function isExpiredEventDate(eventDate: string | null): boolean {
   return eventDate < todayInJstDateKey()
 }
 
-/** 東海地方キーワード（タイトル・会場・エリア） */
-export function isTokaiKeywordEvent(event: {
+type EventListFilterInput = {
   title: string
   location: string
   area: string
-}): boolean {
-  const text = `${event.title} ${event.location} ${event.area}`
-  return TOKAI_FILTER_KEYWORDS.some((kw) => text.includes(kw))
+  eventDate: string | null
+  prefecture?: string
+  description?: string
+  sourceId?: string | null
 }
 
-function passesEventListFilter(
-  event: {
-    title: string
-    location: string
-    area: string
-    eventDate: string | null
-  },
-  tokaiOnly: boolean,
-): boolean {
+function passesEventListFilter(event: EventListFilterInput, tokaiOnly: boolean): boolean {
   if (isExpiredEventDate(event.eventDate)) return false
   if (!tokaiOnly) return true
-  return isTokaiKeywordEvent(event)
+  return isTokaiDisplayEvent(event)
 }
 
 function isTodayInJst(iso: string): boolean {
@@ -48,12 +39,14 @@ function isTodayInJst(iso: string): boolean {
 }
 
 export function recruitmentToDisplayEvent(r: Recruitment): DisplayEvent {
+  const prefecture = r.area.endsWith('県') ? r.area : resolvePrefectureFromText(r.venue, r.area)
   return {
     id: `host-${r.id}`,
     title: r.title,
     organizer: '',
     location: r.venue,
-    area: r.area,
+    area: prefecture || r.area,
+    prefecture: prefecture || r.area,
     eventDate: r.date,
     recruitEnd: null,
     feeLabel: formatFee(r.fee),
@@ -75,12 +68,19 @@ export function recruitmentToDisplayEvent(r: Recruitment): DisplayEvent {
 }
 
 export function collectedEventToDisplayEvent(e: CollectedEvent): DisplayEvent {
+  const { venue, prefecture } = resolveVenueAndPrefectureFields(
+    e.location,
+    e.prefecture,
+    e.area,
+    e.title,
+  )
   return {
     id: e.id,
     title: e.title,
     organizer: e.organizer,
-    location: e.location,
-    area: e.area,
+    location: venue || e.location,
+    area: prefecture || e.area,
+    prefecture,
     eventDate: e.eventDate,
     recruitEnd: e.recruitEnd,
     feeLabel: e.fee || '要確認',
@@ -93,7 +93,7 @@ export function collectedEventToDisplayEvent(e: CollectedEvent): DisplayEvent {
     description: e.description,
     isNew: isTodayInJst(e.createdAt),
     isUrgent: false,
-    imageGradient: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+    imageGradient: getEventHeroBackground('collected', e.sourceId),
     applicants: 0,
     maxApplicants: 0,
     timeSlot: '',
@@ -111,7 +111,14 @@ export function mergeEventList(
     .map(recruitmentToDisplayEvent)
     .filter((e) =>
       passesEventListFilter(
-        { title: e.title, location: e.location, area: e.area, eventDate: e.eventDate },
+        {
+          title: e.title,
+          location: e.location,
+          area: e.area,
+          eventDate: e.eventDate,
+          prefecture: e.prefecture,
+          description: e.description,
+        },
         tokaiOnly,
       ),
     )
@@ -119,7 +126,15 @@ export function mergeEventList(
     .filter((e) => includeClosed || e.status === 'open')
     .filter((e) =>
       passesEventListFilter(
-        { title: e.title, location: e.location, area: e.area, eventDate: e.eventDate },
+        {
+          title: e.title,
+          location: e.location,
+          area: e.area,
+          eventDate: e.eventDate,
+          prefecture: e.prefecture,
+          description: e.description,
+          sourceId: e.sourceId,
+        },
         tokaiOnly,
       ),
     )
@@ -141,7 +156,13 @@ export function filterDisplayEvents(
   const area = filters.area ?? 'すべて'
   const q = (filters.search ?? '').trim().toLowerCase()
   return events.filter((e) => {
-    if (area !== 'すべて' && e.area !== area) return false
+    if (area !== 'すべて') {
+      const eventPref =
+        e.prefecture ||
+        (e.area.endsWith('県') ? e.area : '') ||
+        resolvePrefectureFromText(e.location, e.title, e.area)
+      if (eventPref !== area) return false
+    }
     if (!q) return true
     const blob = `${e.title} ${e.location} ${e.area} ${e.category} ${e.organizer}`.toLowerCase()
     return blob.includes(q)
@@ -149,6 +170,15 @@ export function filterDisplayEvents(
 }
 
 export function deriveEventAreas(events: DisplayEvent[]): string[] {
-  const set = new Set(events.map((e) => e.area).filter(Boolean))
+  const set = new Set(
+    events
+      .map(
+        (e) =>
+          e.prefecture ||
+          (e.area.endsWith('県') ? e.area : '') ||
+          resolvePrefectureFromText(e.location, e.title, e.area),
+      )
+      .filter(Boolean),
+  )
   return ['すべて', ...[...set].sort((a, b) => a.localeCompare(b, 'ja'))]
 }

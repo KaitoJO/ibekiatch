@@ -1,0 +1,15 @@
+[
+  { "hints": ["摂津市"], "cityLabel": "摂津市", "prefecture": "大阪府" },
+  { "hints": ["大阪市", "大阪府"], "cityLabel": "大阪市", "prefecture": "大阪府" },
+  { "hints": ["堺市"], "cityLabel": "堺市", "prefecture": "大阪府" },
+  { "hints": ["東大阪市"], "cityLabel": "東大阪市", "prefecture": "大阪府" },
+  { "hints": ["枚方市"], "cityLabel": "枚方市", "prefecture": "京都府" },
+  { "hints": ["京都市", "京都府"], "cityLabel": "京都市", "prefecture": "京都府" },
+  { "hints": ["神戸市", "兵庫県"], "cityLabel": "神戸市", "prefecture": "兵庫県" },
+  { "hints": ["南伊勢町"], "cityLabel": "南伊勢町", "prefecture": "三重県" },
+  { "hints": ["紀北町"], "cityLabel": "紀北町", "prefecture": "三重県" },
+  { "hints": ["朝日町"], "cityLabel": "朝日町", "prefecture": "三重県", "exclude": ["大阪", "京都"] },
+  { "hints": ["川越町"], "cityLabel": "川越町", "prefecture": "三重県" },
+  { "hints": ["横浜市"], "cityLabel": "横浜市", "prefecture": "神奈川県" },
+  { "hints": ["東京", "東京都"], "cityLabel": "東京都", "prefecture": "東京都" }
+]

@@ -47,6 +47,23 @@
   opacity: 0.95;
 }
 
+.screen-header__icon-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-full);
+  background: rgba(0, 0, 0, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: inherit;
+}
+
+.screen-header--gradient .screen-header__icon-btn {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
 .primary-btn {
   width: 100%;
   padding: 16px;

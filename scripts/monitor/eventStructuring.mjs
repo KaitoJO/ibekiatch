@@ -1,6 +1,7 @@
 import { callAnthropicMessages, getAnthropicApiKey, normalizeText, stripInvalidSurrogates } from './urlUtils.mjs'
 import { supplementEventDates } from './dateExtraction.mjs'
 import { applyQualityAdjustments } from './qualityScoring.mjs'
+import { resolveVenueAndPrefecture } from './prefectureMap.mjs'
 import { resolveTokaiArea, isTokaiRegionText, MIE_LOCAL_SOURCE_IDS, getPublishConfidenceMin } from './tokaiRegion.mjs'
 
 const STRUCTURE_MODEL = 'claude-haiku-4-5'
@@ -23,6 +24,8 @@ function buildStructurePrompt(title, content, source, sourceUrl, { detailed = fa
 - 無関係
 
 【除外】出店者本人の宣伝、感想、終了済み、スタッフ/出演者/求人募集
+- ミュージアムショップ・委託販売・棚貸し・テナント募集・店舗出店
+【対象】キッチンカー・露天・マルシェ・フードトラック・移動販売の出店募集のみ
 
 ソース: ${source}
 URL: ${sourceUrl ?? ''}
@@ -47,7 +50,7 @@ JSON形式:
 }
 
 ルール:
-- confidence は 0-100（三重ソース65+ / 東海ジモティー等70+ / その他80+が掲載候補）
+- confidence は 0-100（三重ソース75+ / 東海ジモティー等80+ / その他85+が掲載候補）
 - is_recruiting は主催者が出店者を募集中なら true
 - location は市区町村名または会場名（不明なら空文字）
 - 日付は YYYY-MM-DD または空文字
@@ -83,16 +86,39 @@ function normalizeDate(value) {
 
 function applyTokaiArea(raw, fallback = {}) {
   const title = normalizeText(raw?.title || fallback.title || '')
-  const location = normalizeText(raw?.location || fallback.location || '')
-  const resolved = resolveTokaiArea(
+  const rawLocation = normalizeText(raw?.location || fallback.location || '')
+  const resolved = resolveVenueAndPrefecture({
     title,
-    location,
+    location: rawLocation,
+    snippet: fallback.snippet ?? '',
+    sourceId: fallback.sourceId ?? '',
+  })
+
+  const tokai = resolveTokaiArea(
+    title,
+    rawLocation,
     fallback.snippet ?? '',
     fallback.sourceId ?? '',
   )
-  const area = resolved?.area ?? ''
-  const loc = location || area || ''
-  return { title, location: loc, area, inTokai: Boolean(resolved) || isTokaiRegionText(title, location, fallback.snippet) }
+
+  const prefecture = resolved.prefecture || tokai?.prefecture || ''
+  let location = resolved.venue || rawLocation
+  if (!location && tokai?.area && tokai.area !== tokai.prefecture) {
+    location = tokai.area
+  }
+
+  const inTokai =
+    Boolean(tokai) ||
+    Boolean(prefecture && ['三重県', '静岡県', '愛知県', '岐阜県'].includes(prefecture)) ||
+    isTokaiRegionText(title, rawLocation, fallback.snippet)
+
+  return {
+    title,
+    location,
+    prefecture,
+    area: prefecture,
+    inTokai,
+  }
 }
 
 export function normalizeStructuredEvent(raw, fallback = {}) {
@@ -101,7 +127,7 @@ export function normalizeStructuredEvent(raw, fallback = {}) {
   const isRecruiting =
     Boolean(raw?.is_recruiting) && category !== '募集終了' && category !== '無関係'
 
-  const { title, location, area, inTokai } = applyTokaiArea(raw, fallback)
+  const { title, location, prefecture, area, inTokai } = applyTokaiArea(raw, fallback)
 
   return {
     category,
@@ -110,6 +136,7 @@ export function normalizeStructuredEvent(raw, fallback = {}) {
     title: title || fallback.title || '',
     organizer: normalizeText(raw?.organizer || ''),
     location,
+    prefecture,
     area,
     in_tokai: inTokai,
     event_date: normalizeDate(raw?.event_date),

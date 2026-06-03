@@ -1,0 +1,19 @@
+{
+  "name": "イベキャッチ — 出店場所を、AIが見つける",
+  "short_name": "イベキャッチ",
+  "description": "キッチンカー・移動販売の出店募集をAIが収集",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#FF6B35",
+  "lang": "ja",
+  "icons": [
+    {
+      "src": "/icons.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

@@ -1,43 +1,31 @@
 #!/usr/bin/env node
 /**
- * Resend SMTP を Supabase Auth に反映します。
+ * Resend SMTP を Supabase Auth（本番）に反映します。
  *
  * 必要な .env:
- *   RESEND_API_KEY=re_...   （Resend Dashboard → API Keys）
- *   RESEND_SENDER_EMAIL=... （省略時 onboarding@resend.dev）
+ *   RESEND_API_KEY=re_...
+ *   SUPABASE_ACCESS_TOKEN=sbp_...  （Management API 用）
+ *   RESEND_SENDER_EMAIL=...        （省略時 onboarding@resend.dev = テスト用）
  *
  * 使い方:
  *   npm run auth:smtp
- *   RESEND_API_KEY=re_xxx npm run auth:smtp
  */
 import { execSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { existsSync } from 'node:fs'
+import { resolve } from 'node:path'
+import {
+  getAuthConfig,
+  getProjectRef,
+  isSandboxSender,
+  loadMergedEnv,
+  patchAuthConfig,
+  requireAccessToken,
+  RESEND_SANDBOX_SENDER,
+  root,
+  verifyResendKey,
+} from './auth-email-shared.mjs'
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const supabaseBin = resolve(root, 'node_modules/.bin/supabase')
-
-function parseEnvFile(path) {
-  if (!existsSync(path)) return {}
-  const env = {}
-  for (const line of readFileSync(path, 'utf8').split('\n')) {
-    const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith('#')) continue
-    const eq = trimmed.indexOf('=')
-    if (eq === -1) continue
-    const key = trimmed.slice(0, eq).trim()
-    let val = trimmed.slice(eq + 1).trim()
-    if (
-      (val.startsWith('"') && val.endsWith('"')) ||
-      (val.startsWith("'") && val.endsWith("'"))
-    ) {
-      val = val.slice(1, -1)
-    }
-    env[key] = val
-  }
-  return env
-}
 
 function run(command, extraEnv = {}) {
   console.log(`\n> ${command}\n`)
@@ -48,40 +36,19 @@ function run(command, extraEnv = {}) {
   })
 }
 
-async function verifyResendKey(apiKey) {
-  const res = await fetch('https://api.resend.com/domains', {
-    headers: { Authorization: `Bearer ${apiKey}` },
-  })
-  const body = await res.text()
-  if (res.ok) {
-    console.log('✓ Resend API キーを確認しました')
-    return
-  }
-  if (res.status === 401 && body.includes('restricted_api_key')) {
-    console.log('✓ Resend API キーを確認しました（送信専用キー）')
-    return
-  }
-  if (res.status === 401 || res.status === 403) {
-    throw new Error('Resend API キーが無効です。Dashboard で再発行してください。')
-  }
-  throw new Error(`Resend API 検証失敗 (${res.status}): ${body.slice(0, 200)}`)
-}
-
-const fileEnv = parseEnvFile(resolve(root, '.env'))
-const apiKey = (process.argv[2] || fileEnv.RESEND_API_KEY || process.env.RESEND_API_KEY || '').trim()
+const env = loadMergedEnv()
+const apiKey = (process.argv[2] || env.RESEND_API_KEY || '').trim()
+const senderEmail = (env.RESEND_SENDER_EMAIL || RESEND_SANDBOX_SENDER).trim()
+const projectRef = getProjectRef(env)
 
 if (!apiKey) {
   console.error(
     [
       'RESEND_API_KEY が未設定です。',
       '',
-      '1. https://resend.com/signup でアカウント作成（GitHub 連携可）',
-      '2. https://resend.com/api-keys で API キーを作成',
-      '3. .env に RESEND_API_KEY=re_... を追加',
-      '4. npm run auth:smtp を再実行',
-      '',
-      'テスト送信のみ: RESEND_SENDER_EMAIL=onboarding@resend.dev',
-      '（Resend 登録メールアドレス宛にのみ届きます。全ユーザー向けはドメイン verify が必要）',
+      '1. https://resend.com/api-keys で API キーを作成',
+      '2. .env に RESEND_API_KEY=re_... を追加',
+      '3. npm run auth:smtp を再実行',
     ].join('\n'),
   )
   process.exit(1)
@@ -92,20 +59,70 @@ if (!/^re_[A-Za-z0-9_]+$/.test(apiKey)) {
   process.exit(1)
 }
 
+if (!projectRef) {
+  console.error('VITE_SUPABASE_URL からプロジェクト ref を特定できません。')
+  process.exit(1)
+}
+
 if (!existsSync(supabaseBin)) {
   console.error('Supabase CLI が見つかりません。npm install を実行してください。')
   process.exit(1)
 }
 
-console.log(`Sender (config.toml): onboarding@resend.dev`)
-console.log('  本番用は supabase/config.toml の admin_email を verify 済みドメインに変更してください')
-await verifyResendKey(apiKey)
+console.log(`Project: ${projectRef}`)
+console.log(`Sender:  ${senderEmail}`)
 
-const pushEnv = {
-  RESEND_API_KEY: apiKey,
+if (isSandboxSender(senderEmail)) {
+  console.warn(
+    [
+      '',
+      '⚠ テスト送信元 (onboarding@resend.dev) です。',
+      '  Resend 登録メールアドレス宛にしか確認メールは届きません。',
+      '  全ユーザー向け: https://resend.com/domains でドメイン verify 後、',
+      '  .env の RESEND_SENDER_EMAIL=noreply@yourdomain.com に変更して再実行。',
+      '',
+    ].join('\n'),
+  )
 }
 
-run(`"${supabaseBin}" config push --yes`, pushEnv)
+const resendCheck = await verifyResendKey(apiKey)
+console.log(resendCheck.sandbox ? '✓ Resend API キー OK（サンドボックス）' : '✓ Resend API キー OK')
 
-console.log('\n✓ SMTP 設定を Supabase に反映しました')
-console.log('  本番: https://ibekiatch.vercel.app で新規登録して確認メールをテストしてください')
+let accessToken
+try {
+  accessToken = requireAccessToken(env)
+} catch (err) {
+  console.warn(String(err.message))
+  console.warn('\nManagement API をスキップし config push のみ実行します…')
+}
+
+if (accessToken) {
+  console.log('\nManagement API で SMTP を直接設定します…')
+  await patchAuthConfig(projectRef, accessToken, {
+    external_email_enabled: true,
+    mailer_autoconfirm: false,
+    smtp_host: 'smtp.resend.com',
+    smtp_port: 465,
+    smtp_user: 'resend',
+    smtp_pass: apiKey,
+    smtp_admin_email: senderEmail,
+    smtp_sender_name: 'ibekiatch',
+  })
+
+  const cfg = await getAuthConfig(projectRef, accessToken)
+  console.log('✓ SMTP 反映済み')
+  console.log(`  smtp_host: ${cfg.smtp_host}`)
+  console.log(`  smtp_admin_email: ${cfg.smtp_admin_email}`)
+  console.log(`  smtp_pass: ${cfg.smtp_pass ? '（設定済み）' : '（未設定）'}`)
+}
+
+run(`"${supabaseBin}" config push --yes`, {
+  RESEND_API_KEY: apiKey,
+  RESEND_SENDER_EMAIL: senderEmail,
+})
+
+console.log('\n✓ 完了')
+console.log('  診断: npm run auth:diagnose')
+if (isSandboxSender(senderEmail)) {
+  console.log('  全アドレスで届ける: ドメイン verify → RESEND_SENDER_EMAIL 変更 → npm run auth:smtp')
+}

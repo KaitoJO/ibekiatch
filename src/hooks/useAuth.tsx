@@ -27,8 +27,11 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
   upsertProfile,
+  upsertMyEventApplied,
+  insertViewingHistory,
   type ProfileForm,
 } from '../lib/workspaceDb'
+import { resolveMyEventIds } from '../lib/myEvents'
 import { buildShopConfirmedPost, openXPostIntent } from '../lib/xPost'
 import { hasPaidAccess } from '../lib/billing'
 import { getSupabase } from '../lib/supabaseClient'
@@ -50,6 +53,9 @@ import type {
   NotificationRecord,
   Profile,
   Recruitment,
+  MyEventRecord,
+  DisplayEvent,
+  ViewingHistoryRecord,
 } from '../types'
 
 type AuthContextValue = {
@@ -69,6 +75,8 @@ type AuthContextValue = {
   eventChatMessages: EventChatMessage[]
   monitorHits: MonitorHit[]
   collectedEvents: CollectedEvent[]
+  myEvents: MyEventRecord[]
+  viewingHistory: ViewingHistoryRecord[]
   calendarEvents: CalendarEvent[]
   appliedRecruitmentIds: Set<string>
   unreadNotificationCount: number
@@ -85,6 +93,8 @@ type AuthContextValue = {
   createEventReview: (form: EventReviewForm) => Promise<void>
   sendEventChatMessage: (recruitmentId: string, body: string) => Promise<void>
   signOut: () => Promise<void>
+  recordEventView: (event: DisplayEvent) => Promise<void>
+  markMyEventApplied: (event: DisplayEvent) => Promise<MyEventRecord | null>
   authNotice: string | null
   clearAuthNotice: () => void
   authDisabled: boolean
@@ -110,6 +120,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [eventChatMessages, setEventChatMessages] = useState<EventChatMessage[]>([])
   const [monitorHits, setMonitorHits] = useState<MonitorHit[]>([])
   const [collectedEvents, setCollectedEvents] = useState<CollectedEvent[]>([])
+  const [myEvents, setMyEvents] = useState<MyEventRecord[]>([])
+  const [viewingHistory, setViewingHistory] = useState<ViewingHistoryRecord[]>([])
   const [authNotice, setAuthNotice] = useState<string | null>(null)
   const [authInitError, setAuthInitError] = useState<string | null>(null)
 
@@ -124,6 +136,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setEventChatMessages([])
     setMonitorHits([])
     setCollectedEvents([])
+    setMyEvents([])
+    setViewingHistory([])
     setWorkspaceError(null)
     setWorkspaceLoading(false)
   }, [])
@@ -186,6 +200,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setEventChatMessages(data.eventChatMessages)
       setMonitorHits(data.monitorHits)
       setCollectedEvents(data.collectedEvents)
+      setMyEvents(data.myEvents)
+      setViewingHistory(data.viewingHistory)
     } catch (err) {
       setWorkspaceError(formatError(err))
     } finally {
@@ -442,14 +458,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await supabase.auth.signOut()
   }, [supabase, authDisabled])
 
+  const recordEventView = useCallback(
+    async (event: DisplayEvent) => {
+      if (!supabase || !session?.user?.id) return
+      try {
+        const record = await insertViewingHistory(supabase, session.user.id, {
+          eventId: event.id,
+          eventTitle: event.title,
+        })
+        setViewingHistory((prev) => [record, ...prev].slice(0, 100))
+      } catch {
+        // 閲覧履歴の失敗は詳細表示を妨げない
+      }
+    },
+    [supabase, session?.user?.id],
+  )
+
+  const markMyEventApplied = useCallback(
+    async (event: DisplayEvent) => {
+      if (!supabase || !session?.user?.id) return null
+      const { eventId, recruitmentId, refKey } = resolveMyEventIds(event)
+      const record = await upsertMyEventApplied(supabase, session.user.id, {
+        refKey,
+        eventId,
+        recruitmentId,
+        eventDate: event.eventDate,
+        eventTitle: event.title,
+        eventLocation: event.location,
+        area: event.area,
+      })
+      setMyEvents((prev) => {
+        const rest = prev.filter((m) => m.refKey !== refKey)
+        return [record, ...rest]
+      })
+      return record
+    },
+    [supabase, session?.user?.id],
+  )
+
   const appliedRecruitmentIds = useMemo(
     () => new Set(applications.map((a) => a.recruitmentId)),
     [applications],
   )
 
   const calendarEvents = useMemo(
-    () => buildCalendarEvents(applications, recruitments),
-    [applications, recruitments],
+    () => buildCalendarEvents(applications, recruitments, myEvents),
+    [applications, recruitments, myEvents],
   )
 
   const eventReviewSummaries = useMemo(
@@ -480,6 +534,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       eventChatMessages,
       monitorHits,
       collectedEvents,
+      myEvents,
+      viewingHistory,
       calendarEvents,
       appliedRecruitmentIds,
       unreadNotificationCount,
@@ -496,6 +552,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       createEventReview,
       sendEventChatMessage,
       signOut,
+      recordEventView,
+      markMyEventApplied,
       authNotice,
       clearAuthNotice: () => setAuthNotice(null),
       authDisabled,
@@ -519,6 +577,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       eventChatMessages,
       monitorHits,
       collectedEvents,
+      myEvents,
+      viewingHistory,
       calendarEvents,
       appliedRecruitmentIds,
       unreadNotificationCount,
@@ -535,6 +595,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       createEventReview,
       sendEventChatMessage,
       signOut,
+      recordEventView,
+      markMyEventApplied,
       authNotice,
       authDisabled,
       authInitError,

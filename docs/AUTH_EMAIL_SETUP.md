@@ -59,9 +59,11 @@ Resend の [Logs](https://resend.com/emails) で送信状況を確認できま�
 
 ## トラブルシューティング
 
-| 現象 | 対処 |
-|------|------|
-| メールが届かない | `npm run auth:smtp` 実行済みか、Resend Logs を確認 |
-| テストで他アドレスに届かない | `onboarding@resend.dev` は登録メアドレス宛のみ。ドメイン verify が必要 |
-| リンクを開いてもログインできない | Redirect URLs に本番 URL が入っているか確認 |
-| 「Email not confirmed」 | 確認メールを再送、または Dashboard で手動 confirm |
+| 現象 | 原因 | 対処 |
+|------|------|------|
+| **他のメールアドレスで登録するとエラー** | `onboarding@resend.dev` は Resend 登録メール宛のみ | [Resend Domains](https://resend.com/domains) で verify → `RESEND_SENDER_EMAIL` 変更 → `npm run auth:smtp` |
+| メールが届かない（登録メール以外） | 上記と同じ | 同上 |
+| すぐ登録したい（暫定） | 確認メール必須のため | `npm run auth:no-confirm` |
+| 診断 | — | `npm run auth:diagnose` |
+| リンクを開いてもログインできない | Redirect URLs 未設定 | Dashboard で本番 URL を追加 |
+| 「Email not confirmed」 | 未確認のまま残存 | 確認メール再送 or Dashboard で confirm |

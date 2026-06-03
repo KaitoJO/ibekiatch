@@ -39,6 +39,11 @@ const EXCLUSION = [
   'スタッフ募集',
   'アルバイト募集',
   '求人募集',
+  'ミュージアムショップ',
+  '委託販売',
+  '棚貸し',
+  'テナント募集',
+  '店舗出店',
 ]
 
 export function scoreRecruitmentText(title, snippet = '') {
@@ -58,7 +63,7 @@ export function scoreRecruitmentText(title, snippet = '') {
   return score
 }
 
-/** デフォルト20点以上でAIへ（キーワード一致済みの候補をさらに絞る） */
-export function passesKeywordScore(title, snippet, minScore = 20) {
+/** デフォルト25点以上でAIへ（キーワード一致済みの候補をさらに絞る） */
+export function passesKeywordScore(title, snippet, minScore = 25) {
   return scoreRecruitmentText(title, snippet) >= minScore
 }

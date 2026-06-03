@@ -10,6 +10,7 @@ export type CollectedEvent = {
   organizer: string
   location: string
   area: string
+  prefecture: string
   eventDate: string | null
   recruitStart: string | null
   recruitEnd: string | null
@@ -30,6 +31,7 @@ export type DisplayEvent = {
   organizer: string
   location: string
   area: string
+  prefecture: string
   eventDate: string | null
   recruitEnd: string | null
   feeLabel: string
@@ -88,14 +90,38 @@ export type ApplicationRecord = {
 
 export type CalendarEvent = {
   id: string
-  recruitmentId: string
+  recruitmentId: string | null
   title: string
   venue: string
   area: string
   date: string
   timeSlot: string
-  status: ApplicationRecord['status']
   fee: number
+  /** my_events / applications 統合後の表示ステータス */
+  myEventStatus: MyEventStatus
+  source: 'application' | 'my_event'
+}
+
+export type MyEventStatus = '応募中' | '出店確定'
+
+export type MyEventRecord = {
+  id: string
+  eventId: string | null
+  recruitmentId: string | null
+  refKey: string
+  eventDate: string | null
+  eventTitle: string
+  eventLocation: string
+  area: string
+  status: MyEventStatus
+  createdAt: string
+}
+
+export type ViewingHistoryRecord = {
+  id: string
+  eventId: string
+  eventTitle: string
+  viewedAt: string
 }
 
 export type NotificationRecord = {

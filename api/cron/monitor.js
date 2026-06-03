@@ -1,7 +1,13 @@
-import { runMonitor } from '../../scripts/monitor/run.mjs'
+import {
+  runMonitor,
+  runEventsPipeline,
+  resolveCronRequest,
+  ALL_CRON_SOURCE_IDS,
+  CRON_BATCHES,
+} from '../../scripts/monitor/run.mjs'
 
 export const config = {
-  maxDuration: 300,
+  maxDuration: 60,
 }
 
 function getAllowedTokens() {
@@ -47,6 +53,28 @@ function verifyAuth(req) {
   return { ok: true }
 }
 
+function parseQuery(req) {
+  const host = headerValue(req.headers, 'host') || 'localhost'
+  const url = new URL(req.url ?? '/', `https://${host}`)
+  return {
+    source: url.searchParams.get('source'),
+    batch: url.searchParams.get('batch'),
+    pipeline: url.searchParams.get('pipeline'),
+  }
+}
+
+function mapResults(results) {
+  return results.map((r) => ({
+    sourceId: r.sourceId,
+    saved: r.hits ?? 0,
+    skipped: Boolean(r.skipped),
+    reason: r.reason ?? null,
+    closedSkipped: r.stats?.closedSkipped ?? 0,
+    aiSkipped: r.stats?.aiSkipped ?? 0,
+    error: r.error ?? null,
+  }))
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') {
     return res.status(405).send('Method Not Allowed')
@@ -57,22 +85,64 @@ export default async function handler(req, res) {
     return res.status(auth.status).json({ ok: false, error: auth.message })
   }
 
+  const started = Date.now()
+  const query = parseQuery(req)
+  const resolved = resolveCronRequest(query)
+
+  if (resolved.error) {
+    return res.status(400).json({
+      ok: false,
+      error: resolved.error,
+      knownSources: resolved.knownSources,
+      batchCount: resolved.batchCount,
+      batches: CRON_BATCHES.map((sources, i) => ({ batch: i, sources })),
+    })
+  }
+
   try {
-    const { saved, results, errors, sourceCount } = await runMonitor({ logger: console })
+    if (resolved.mode === 'pipeline') {
+      const result = await runEventsPipeline(console)
+      return res.status(200).json({
+        ok: true,
+        mode: 'pipeline',
+        processed: result.processed,
+        saved: result.saved,
+        skipped: result.skipped,
+        skippedSources: result.skippedSources,
+        skippedHits: result.skippedHits,
+        events: result.events,
+        durationMs: Date.now() - started,
+      })
+    }
+
+    const result = await runMonitor({
+      sources: resolved.sources,
+      batch: resolved.batch,
+      runPipeline: resolved.runPipeline,
+      runCleanup: resolved.runCleanup,
+      logger: console,
+    })
+
     return res.status(200).json({
       ok: true,
-      saved,
-      sourceCount,
-      errors: errors.map((e) => ({ sourceId: e.sourceId, error: e.error })),
-      results: results.map((r) => ({
-        sourceId: r.sourceId,
-        hits: r.hits ?? 0,
-        skipped: r.skipped ?? false,
-      })),
+      mode: resolved.mode,
+      batch: resolved.batch,
+      sources: resolved.sources ?? ALL_CRON_SOURCE_IDS,
+      processed: result.processed,
+      processedCandidates: result.processedCandidates,
+      saved: result.saved,
+      skipped: result.skipped,
+      skippedSources: result.skippedSources,
+      skippedHits: result.skippedHits,
+      pipeline: result.pipeline ?? null,
+      events: result.events ?? null,
+      durationMs: Date.now() - started,
+      errors: result.errors.map((e) => ({ sourceId: e.sourceId, error: e.error })),
+      results: mapResults(result.results),
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.error('monitor cron failed:', message)
-    return res.status(500).json({ ok: false, error: message })
+    return res.status(500).json({ ok: false, error: message, durationMs: Date.now() - started })
   }
 }

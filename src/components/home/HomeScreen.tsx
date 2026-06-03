@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Bell, MapPin, Search, X } from 'lucide-react'
 import { canViewFullMonitorFeed } from '../../lib/authConfig'
+import { consumePendingEventDetail } from '../../lib/eventDetailNavigation'
 import { APP_NAME, APP_TAGLINE, FREE_AI_HIT_LIMIT, REGION_LABEL } from '../../lib/brand'
 import { hasPaidAccess } from '../../lib/billing'
 import {
@@ -10,6 +11,7 @@ import {
 } from '../../lib/eventList'
 import { filterActiveRecruitments } from '../../lib/recruitmentStatus'
 import { formatError } from '../../lib/formatError'
+import { resolveMyEventRefKey } from '../../lib/myEvents'
 import { useAuth } from '../../hooks/useAuth'
 import type { TabId } from '../../types'
 import { EventCard } from './EventCard'
@@ -35,6 +37,9 @@ export function HomeScreen({ onNavigateTab }: Props) {
     unreadNotificationCount,
     profile,
     session,
+    myEvents,
+    recordEventView,
+    markMyEventApplied,
   } = useAuth()
 
   const [confirmBusyId, setConfirmBusyId] = useState<string | null>(null)
@@ -44,6 +49,11 @@ export function HomeScreen({ onNavigateTab }: Props) {
   const [detailId, setDetailId] = useState<string | null>(null)
   const [applyBusyId, setApplyBusyId] = useState<string | null>(null)
   const [applyError, setApplyError] = useState<string | null>(null)
+
+  useEffect(() => {
+    const pending = consumePendingEventDetail()
+    if (pending) setDetailId(pending)
+  }, [])
 
   const fullAccess = canViewFullMonitorFeed(session?.user?.email)
   const paid = hasPaidAccess(profile) || fullAccess
@@ -107,6 +117,11 @@ export function HomeScreen({ onNavigateTab }: Props) {
     }
   }
 
+  const detailMyEvent =
+    detailEvent && session
+      ? myEvents.find((m) => m.refKey === resolveMyEventRefKey(detailEvent)) ?? null
+      : null
+
   if (detailEvent) {
     return (
       <EventDetailScreen
@@ -120,6 +135,8 @@ export function HomeScreen({ onNavigateTab }: Props) {
           detailEvent.recruitmentId ? applyBusyId === detailEvent.recruitmentId : false
         }
         confirmBusy={detailApplication ? confirmBusyId === detailApplication.id : false}
+        isLoggedIn={Boolean(session)}
+        myEvent={detailMyEvent}
         onBack={() => setDetailId(null)}
         onApply={() => {
           if (detailEvent.recruitmentId) void handleApply(detailEvent.recruitmentId)
@@ -129,6 +146,8 @@ export function HomeScreen({ onNavigateTab }: Props) {
             ? () => void handleConfirmShop(detailApplication.id)
             : undefined
         }
+        onRecordView={recordEventView}
+        onMarkMyEventApplied={markMyEventApplied}
       />
     )
   }
@@ -270,18 +289,7 @@ export function HomeScreen({ onNavigateTab }: Props) {
                 <EventCard
                   key={event.id}
                   event={event}
-                  applied={
-                    event.recruitmentId
-                      ? appliedRecruitmentIds.has(event.recruitmentId)
-                      : false
-                  }
-                  applyBusy={
-                    event.recruitmentId ? applyBusyId === event.recruitmentId : false
-                  }
                   onOpen={() => setDetailId(event.id)}
-                  onApply={() => {
-                    if (event.recruitmentId) void handleApply(event.recruitmentId)
-                  }}
                 />
               ))}
             </div>

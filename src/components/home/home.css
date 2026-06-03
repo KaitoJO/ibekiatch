@@ -223,15 +223,145 @@
   font-weight: 700;
 }
 
-/* ===== Card grid ===== */
+/* ===== Card grid (2列 · 1画面6枚) ===== */
 .card-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-  padding: 12px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  padding: 8px;
 }
 
-/* ===== Recruitment card ===== */
+/* ===== ホーム用コンパクトカード ===== */
+.event-card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  border: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  touch-action: manipulation;
+}
+
+.event-card:active {
+  opacity: 0.92;
+}
+
+.event-card__visual {
+  position: relative;
+  width: 100%;
+  min-height: 88px;
+  padding: 8px 10px 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  color: #fff;
+}
+
+.event-card__hero-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: auto;
+  padding-top: 28px;
+}
+
+.event-card__hero-area {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.event-card__hero-source {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0.92;
+  line-height: 1.2;
+}
+
+.event-card__hero-date {
+  margin: 0;
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0.85;
+  line-height: 1.2;
+}
+
+.event-card__badges {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  right: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.event-card__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 8px;
+  font-weight: 700;
+  padding: 2px 5px;
+  border-radius: var(--radius-full);
+  line-height: 1.2;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--color-primary);
+}
+
+.event-card__badge--ai {
+  background: rgba(15, 23, 42, 0.55);
+  color: white;
+}
+
+.event-card__badge--deadline {
+  background: rgba(255, 255, 255, 0.95);
+  color: #b45309;
+}
+
+.event-card__badge--urgent {
+  background: rgba(239, 68, 68, 0.95);
+  color: white;
+}
+
+.event-card__body {
+  padding: 6px 8px 8px;
+}
+
+.event-card__title {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.event-card__meta {
+  margin: 0;
+  font-size: 10px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ===== Recruitment card (詳細・旧レイアウト) ===== */
 .recruitment-card {
   min-width: 0;
   background: var(--color-surface);
@@ -622,4 +752,98 @@
 .detail-cta--confirm {
   margin-top: 10px;
   background: linear-gradient(135deg, #15803d, #166534);
+}
+
+.detail-status-badge {
+  background: rgba(148, 163, 184, 0.95);
+  color: white;
+}
+
+.apply-prompt-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px;
+  padding-bottom: calc(16px + var(--safe-bottom, 0px));
+}
+
+.apply-prompt {
+  width: min(100%, 420px);
+  background: var(--color-surface);
+  border-radius: var(--radius-xl);
+  padding: 20px;
+  box-shadow: var(--shadow-lg);
+  position: relative;
+}
+
+.apply-prompt__close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-secondary);
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.apply-prompt__title {
+  margin: 0 0 8px;
+  padding-right: 36px;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.apply-prompt__body {
+  margin: 0 0 16px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
+.apply-prompt__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.apply-prompt__btn {
+  width: 100%;
+  padding: 12px 16px;
+  border-radius: var(--radius-full);
+  font-size: 15px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+}
+
+.apply-prompt__btn--primary {
+  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+  color: white;
+}
+
+.apply-prompt__btn--text {
+  background: none;
+  border: none;
+  color: #9ca3af;
+  padding: 10px 16px;
+  font-weight: 600;
+}
+
+.apply-prompt__btn--ghost {
+  background: transparent;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+}
+
+.apply-prompt__btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }

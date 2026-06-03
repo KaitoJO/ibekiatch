@@ -5,8 +5,28 @@
   "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }],
   "functions": {
     "api/cron/monitor.js": {
-      "maxDuration": 300,
+      "maxDuration": 60,
       "memory": 1024
+    },
+    "api/cron/threads-post.js": {
+      "maxDuration": 60
+    },
+    "api/stripe/webhook.js": {
+      "maxDuration": 30
+    },
+    "api/stripe/checkout.js": {
+      "maxDuration": 30
+    },
+    "api/stripe/portal.js": {
+      "maxDuration": 30
+    },
+    "api/stripe/sync.js": {
+      "maxDuration": 30
     }
-  }
+  },
+  "crons": [
+    { "path": "/api/cron/threads-post", "schedule": "0 22 * * *" },
+    { "path": "/api/cron/threads-post", "schedule": "30 3 * * *" },
+    { "path": "/api/cron/threads-post", "schedule": "0 12 * * *" }
+  ]
 }

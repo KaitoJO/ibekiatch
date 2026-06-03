@@ -8,6 +8,7 @@ import { shouldSkipBeforeAi } from './qualityScoring.mjs'
 import { normalizeOrganizerKey, pickOrganizerLabel } from './organizerEntity.mjs'
 import { recheckOpenEventsFromSources } from './eventRecheck.mjs'
 import { isRecruitmentPost } from './urlUtils.mjs'
+import { resolveVenueAndPrefecture } from './prefectureMap.mjs'
 import {
   resolveTokaiArea,
   isTokaiRegionText,
@@ -15,6 +16,8 @@ import {
   hitProcessingPriority,
   getPublishConfidenceMin,
 } from './tokaiRegion.mjs'
+import { notifyNewEventPush } from '../../api/lib/webPushShared.mjs'
+import { isExcludedNewsSource } from './excludedSources.mjs'
 
 const BATCH_LIMIT = 80
 const CANDIDATE_POOL = 400
@@ -60,6 +63,17 @@ function passesAreaCheck(hit, structured) {
 }
 
 function applyTokaiArea(structured, hit) {
+  const resolved = resolveVenueAndPrefecture({
+    title: structured.title,
+    location: structured.location,
+    snippet: hit.snippet,
+    sourceId: hit.source_id,
+  })
+
+  structured.location = resolved.venue || structured.location
+  structured.prefecture = resolved.prefecture || structured.prefecture || ''
+  structured.area = structured.prefecture
+
   const tokai = resolveTokaiArea(
     structured.title,
     structured.location,
@@ -67,11 +81,18 @@ function applyTokaiArea(structured, hit) {
     hit.source_id,
   )
   if (tokai) {
-    structured.area = tokai.area
+    structured.prefecture = tokai.prefecture
+    structured.area = tokai.prefecture
+    if (!structured.location && tokai.area !== tokai.prefecture) {
+      structured.location = tokai.area
+    }
     structured.in_tokai = true
   } else if (MIE_LOCAL_SOURCE_IDS.has(hit.source_id)) {
     structured.in_tokai = true
-    if (!structured.area) structured.area = '三重県'
+    if (!structured.prefecture) {
+      structured.prefecture = '三重県'
+      structured.area = '三重県'
+    }
   }
 }
 
@@ -86,6 +107,7 @@ function eventRowFromHit(hit, structured, keywordScore) {
     organizer_key: normalizeOrganizerKey(organizer, structured.title),
     location: structured.location,
     area: structured.area,
+    prefecture: structured.prefecture ?? structured.area ?? '',
     event_date: structured.event_date,
     recruit_start: structured.recruit_start,
     recruit_end: structured.recruit_end,
@@ -171,18 +193,22 @@ export async function processMonitorHitsToEvents(supabase, { limit = BATCH_LIMIT
 
   for (const hit of pending) {
     processed++
+    if (isExcludedNewsSource(hit.source_id)) {
+      skipped.notRecruitment++
+      continue
+    }
     let keywordScore = scoreRecruitmentText(hit.title, hit.snippet)
     const recruitHint = /募集|移動販売|出店者|応募|マルシェ出店/.test(
       `${hit.title ?? ''}\n${hit.snippet ?? ''}`,
     )
     if (
-      keywordScore < 20 &&
+      keywordScore < 25 &&
       recruitHint &&
       (MIE_LOCAL_SOURCE_IDS.has(hit.source_id) || isTokaiRegionText(hit.title, hit.snippet))
     ) {
-      keywordScore = 20
+      keywordScore = 25
     }
-    if (keywordScore < 20) continue
+    if (keywordScore < 25) continue
     if (isClosedRecruitmentText(hit.title, hit.snippet)) continue
     if (shouldSkipBeforeAi(hit.title, hit.snippet)) continue
 
@@ -242,15 +268,29 @@ export async function processMonitorHitsToEvents(supabase, { limit = BATCH_LIMIT
       }
 
       const row = eventRowFromHit(hit, structured, keywordScore)
-      const { error: insertErr } = await supabase.from('events').upsert(row, {
-        onConflict: 'monitor_hit_id',
-      })
+
+      const { data: prior } = await supabase
+        .from('events')
+        .select('id')
+        .eq('monitor_hit_id', hit.id)
+        .maybeSingle()
+
+      const { data: saved, error: insertErr } = await supabase
+        .from('events')
+        .upsert(row, { onConflict: 'monitor_hit_id' })
+        .select('id, title, location, area, recruit_end')
+        .single()
+
       if (insertErr) {
         logger.warn?.('[events] insert error:', insertErr.message)
         continue
       }
       published++
       logger.log?.(`[events] ✓ ${structured.title.slice(0, 50)}`)
+
+      if (saved && !prior) {
+        await notifyNewEventPush(supabase, saved, logger)
+      }
     } catch (err) {
       logger.warn?.('[events] process error:', err instanceof Error ? err.message : err)
     }

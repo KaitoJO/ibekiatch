@@ -18,6 +18,11 @@
     "stripe:setup": "node scripts/stripe-setup.mjs",
     "stripe:bootstrap": "node scripts/stripe-bootstrap.mjs",
     "monitor": "node scripts/monitor-run.mjs",
+    "monitor:cron-urls": "node scripts/monitor-cron-urls.mjs",
+    "monitor:cron-bootstrap": "node scripts/cron-job-org-bootstrap.mjs",
+    "monitor:cron-sync-news": "node scripts/cron-job-org-sync-news.mjs",
+    "monitor:maintain": "node scripts/monitor/maintainEvents.mjs",
+    "push:vapid-setup": "node scripts/push-vapid-setup.mjs",
     "monitor:social": "node scripts/monitor-run.mjs twitter instagram",
     "playwright:install": "playwright install chromium"
   },
@@ -30,7 +35,8 @@
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "rss-parser": "^3.13.0",
-    "stripe": "^18.5.0"
+    "stripe": "^18.5.0",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
