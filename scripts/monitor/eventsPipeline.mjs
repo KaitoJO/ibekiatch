@@ -3,10 +3,11 @@ import {
   shouldPublishEvent,
 } from './eventStructuring.mjs'
 import { scoreRecruitmentText } from './keywordScoring.mjs'
-import { isClosedRecruitmentText } from './recruitmentStatus.mjs'
+import { isClosedRecruitmentText, todayInJstDateKey } from './recruitmentStatus.mjs'
 import { shouldSkipBeforeAi } from './qualityScoring.mjs'
 import { normalizeOrganizerKey, pickOrganizerLabel } from './organizerEntity.mjs'
 import { recheckOpenEventsFromSources } from './eventRecheck.mjs'
+import { isRecruitmentPost } from './urlUtils.mjs'
 import {
   resolveTokaiArea,
   isTokaiRegionText,
@@ -21,6 +22,58 @@ const MIE_CANDIDATE_POOL = 200
 
 const HIT_SELECT =
   'id, source_id, title, url, snippet, matched_keywords, created_at'
+
+const PAST_YEAR_RE = /(19\d{2}|20\d{2})/g
+
+function currentYearJst() {
+  return parseInt(todayInJstDateKey().slice(0, 4), 10)
+}
+
+/** タイトル・本文に現在年より前の西暦が含まれる */
+export function hasPastYearInText(...parts) {
+  const currentYear = currentYearJst()
+  const blob = parts.filter(Boolean).join('\n')
+  if (!blob.trim()) return false
+  for (const match of blob.matchAll(PAST_YEAR_RE)) {
+    const year = parseInt(match[1], 10)
+    if (year < currentYear) return true
+  }
+  return false
+}
+
+/** event_date が今日より過去なら true（null は false = 保存可） */
+export function isPastEventDate(eventDate) {
+  if (!eventDate) return false
+  return eventDate < todayInJstDateKey()
+}
+
+function passesAreaCheck(hit, structured) {
+  if (MIE_LOCAL_SOURCE_IDS.has(hit.source_id)) return true
+  const tokai = resolveTokaiArea(
+    structured.title,
+    structured.location,
+    hit.snippet,
+    hit.source_id,
+  )
+  if (tokai) return true
+  return isTokaiRegionText(structured.title, structured.location, hit.snippet)
+}
+
+function applyTokaiArea(structured, hit) {
+  const tokai = resolveTokaiArea(
+    structured.title,
+    structured.location,
+    hit.snippet,
+    hit.source_id,
+  )
+  if (tokai) {
+    structured.area = tokai.area
+    structured.in_tokai = true
+  } else if (MIE_LOCAL_SOURCE_IDS.has(hit.source_id)) {
+    structured.in_tokai = true
+    if (!structured.area) structured.area = '三重県'
+  }
+}
 
 function eventRowFromHit(hit, structured, keywordScore) {
   const organizer = pickOrganizerLabel(structured.organizer, structured.title)
@@ -102,11 +155,19 @@ async function fetchPrioritizedPendingHits(supabase, limit) {
 /** 未処理の monitor_hits を events に変換（東海ソース優先） */
 export async function processMonitorHitsToEvents(supabase, { limit = BATCH_LIMIT, logger = console } = {}) {
   const pending = await fetchPrioritizedPendingHits(supabase, limit)
-  if (pending.length === 0) return { processed: 0, published: 0, retried: 0 }
+  if (pending.length === 0) {
+    return {
+      processed: 0,
+      published: 0,
+      retried: 0,
+      skipped: { pastYear: 0, pastDate: 0, area: 0, notRecruitment: 0 },
+    }
+  }
 
   let processed = 0
   let published = 0
   let retried = 0
+  const skipped = { pastYear: 0, pastDate: 0, area: 0, notRecruitment: 0 }
 
   for (const hit of pending) {
     processed++
@@ -125,13 +186,27 @@ export async function processMonitorHitsToEvents(supabase, { limit = BATCH_LIMIT
     if (isClosedRecruitmentText(hit.title, hit.snippet)) continue
     if (shouldSkipBeforeAi(hit.title, hit.snippet)) continue
 
+    if (hasPastYearInText(hit.title, hit.snippet)) {
+      skipped.pastYear++
+      continue
+    }
+
     const preTokai =
       MIE_LOCAL_SOURCE_IDS.has(hit.source_id) ||
       resolveTokaiArea(hit.title, '', hit.snippet, hit.source_id) ||
       isTokaiRegionText(hit.title, hit.snippet)
-    if (!preTokai) continue
+    if (!preTokai) {
+      skipped.area++
+      continue
+    }
 
     try {
+      const recruitmentOk = await isRecruitmentPost(hit.title, hit.snippet, hit.source_id)
+      if (!recruitmentOk) {
+        skipped.notRecruitment++
+        continue
+      }
+
       const structured = await structureEventWithTieredAi(
         hit.title,
         hit.snippet,
@@ -139,21 +214,16 @@ export async function processMonitorHitsToEvents(supabase, { limit = BATCH_LIMIT
         hit.url,
       )
 
-      const tokai = resolveTokaiArea(
-        structured.title,
-        structured.location,
-        hit.snippet,
-        hit.source_id,
-      )
-      if (!tokai && !isTokaiRegionText(structured.title, structured.location, hit.snippet)) {
+      applyTokaiArea(structured, hit)
+
+      if (!passesAreaCheck(hit, structured)) {
+        skipped.area++
         continue
       }
-      if (tokai) {
-        structured.area = tokai.area
-        structured.in_tokai = true
-      } else if (MIE_LOCAL_SOURCE_IDS.has(hit.source_id)) {
-        structured.in_tokai = true
-        if (!structured.area) structured.area = '三重県'
+
+      if (isPastEventDate(structured.event_date)) {
+        skipped.pastDate++
+        continue
       }
 
       const minConf = getPublishConfidenceMin(hit.source_id, {
@@ -186,7 +256,14 @@ export async function processMonitorHitsToEvents(supabase, { limit = BATCH_LIMIT
     }
   }
 
-  return { processed, published, retried }
+  const skipTotal = skipped.pastYear + skipped.pastDate + skipped.area + skipped.notRecruitment
+  if (skipTotal > 0) {
+    logger.log?.(
+      `[events] skipped ${skipTotal} (year=${skipped.pastYear} date=${skipped.pastDate} area=${skipped.area} ai=${skipped.notRecruitment})`,
+    )
+  }
+
+  return { processed, published, retried, skipped }
 }
 
 export async function closeExpiredEvents(supabase, logger = console) {

@@ -230,8 +230,9 @@ export async function runMonitor(options = {}) {
       const purged = await purgeNonTokaiEvents(supabase, logger)
       const recheck = await recheckOpenEventsFromSources(supabase, { logger })
       const eventResult = await processMonitorHitsToEvents(supabase, { logger })
+      const sk = eventResult.skipped ?? {}
       logger.log?.(
-        `monitor: events ${eventResult.published}/${eventResult.processed} 件保存（2段AI再試行 ${eventResult.retried ?? 0}）/ 東海外除外 ${purged} / URL再チェック ${recheck.closed} 件終了`,
+        `monitor: events ${eventResult.published}/${eventResult.processed} 件保存（2段AI再試行 ${eventResult.retried ?? 0} / skip year=${sk.pastYear ?? 0} date=${sk.pastDate ?? 0} area=${sk.area ?? 0} ai=${sk.notRecruitment ?? 0}）/ 東海外除外 ${purged} / URL再チェック ${recheck.closed} 件終了`,
       )
     } catch (err) {
       logger.warn?.('monitor: events pipeline failed:', err instanceof Error ? err.message : err)
